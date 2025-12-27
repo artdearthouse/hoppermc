@@ -32,10 +32,10 @@ impl<S: ChunkStorage> ChunkProvider<S> {
 
     /// Get chunk data (from storage or generate new).
     /// Returns raw MCA-formatted bytes (length + compression type + compressed NBT).
-    pub fn get_chunk(&self, pos: ChunkPos) -> Vec<u8> {
+    pub fn get_chunk(&self, pos: ChunkPos) -> std::io::Result<Vec<u8>> {
         // First check storage for modified chunks
         if let Some(data) = self.storage.get(pos) {
-            return data;
+            return Ok(data);
         }
 
         // Generate new chunk

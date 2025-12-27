@@ -82,8 +82,9 @@ impl<S: ChunkStorage + 'static> AnvilFS<S> {
     }
 
     /// Read data from a virtual region file.
-    fn read_region(&self, region: RegionPos, offset: usize, size: usize) -> Vec<u8> {
-        let mut result = vec![0u8; size];
+    /// Writes directly to the `buf` slice.
+    fn read_region(&self, region: RegionPos, offset: usize, buf: &mut [u8]) -> std::io::Result<usize> {
+        let size = buf.len();
         let end = offset + size;
 
         // Zone A: Header (0 - HEADER_SIZE)
@@ -92,7 +93,7 @@ impl<S: ChunkStorage + 'static> AnvilFS<S> {
             let copy_start = offset;
             let copy_end = std::cmp::min(end, HEADER_SIZE);
             let copy_len = copy_end - copy_start;
-            result[..copy_len].copy_from_slice(&header[copy_start..copy_end]);
+            buf[..copy_len].copy_from_slice(&header[copy_start..copy_end]);
         }
 
         // Zone B: Chunk data (HEADER_SIZE+)
@@ -122,7 +123,9 @@ impl<S: ChunkStorage + 'static> AnvilFS<S> {
 
                 // Get chunk data (from storage or generated)
                 let pos = crate::storage::ChunkPos::new(world_x, world_z);
-                let blob = self.chunks.get_chunk(pos);
+                
+                // Propagate errors from generation
+                let blob = self.chunks.get_chunk(pos)?;
 
                 // Copy relevant portion
                 let blob_start = overlap_start - chunk_file_start;
@@ -132,13 +135,13 @@ impl<S: ChunkStorage + 'static> AnvilFS<S> {
                 for i in blob_start..blob_end {
                     let result_idx = result_start + (i - blob_start);
                     if result_idx < size && i < blob.len() {
-                        result[result_idx] = blob[i];
+                        buf[result_idx] = blob[i];
                     }
                 }
             }
         }
 
-        result
+        Ok(size)
     }
 }
 
@@ -197,16 +200,18 @@ impl<S: ChunkStorage + 'static> Filesystem for AnvilFS<S> {
         _lock: Option<u64>,
         reply: ReplyData,
     ) {
-        let region = match self.inodes.get(ino) {
-            Some(r) => r,
-            None => {
-                reply.data(&vec![0u8; size as usize]);
-                return;
+        if let Some(region) = self.inodes.get(ino) {
+            let mut data = vec![0u8; size as usize];
+            match self.read_region(region, offset as usize, &mut data) {
+                Ok(_) => reply.data(&data),
+                Err(e) => {
+                    log::error!("Failed to read region {:?}: {}", region, e);
+                    reply.error(libc::EIO);
+                }
             }
-        };
-
-        let data = self.read_region(region, offset as usize, size as usize);
-        reply.data(&data);
+        } else {
+            reply.data(&[0u8; 0]);
+        }
     }
 
     fn open(&mut self, _req: &Request, _ino: u64, _flags: i32, reply: fuser::ReplyOpen) {

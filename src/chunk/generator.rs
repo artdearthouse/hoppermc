@@ -24,7 +24,7 @@ impl Generator {
 
     /// Generate a chunk at the given world coordinates.
     /// Returns MCA-formatted bytes: [length:4][compression:1][compressed_nbt:N]
-    pub fn generate(&self, chunk_x: i32, chunk_z: i32) -> Vec<u8> {
+    pub fn generate(&self, chunk_x: i32, chunk_z: i32) -> std::io::Result<Vec<u8>> {
         let mut sections = Vec::with_capacity(24);
 
         // Generate sections from Y=-4 to Y=19 (total height: 384 blocks)
@@ -61,12 +61,13 @@ impl Generator {
         };
 
         // Serialize to NBT
-        let nbt_data = fastnbt::to_bytes(&chunk).expect("Failed to serialize chunk NBT");
+        let nbt_data = fastnbt::to_bytes(&chunk)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
         // Compress with Zlib
         let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-        encoder.write_all(&nbt_data).expect("Failed to compress chunk");
-        let compressed = encoder.finish().expect("Failed to finish compression");
+        encoder.write_all(&nbt_data)?;
+        let compressed = encoder.finish()?;
 
         // Pack in MCA format: [length:4][type:1][data:N]
         let mut result = Vec::with_capacity(5 + compressed.len());
@@ -75,7 +76,7 @@ impl Generator {
         result.push(2); // Compression type 2 = Zlib
         result.extend_from_slice(&compressed);
 
-        result
+        Ok(result)
     }
 }
 
