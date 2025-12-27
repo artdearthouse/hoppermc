@@ -283,29 +283,13 @@ impl Filesystem for McFUSE {
         _lock_owner: Option<u64>,
         reply: fuser::ReplyData,
     ) {
-        if let Some((_x, _z)) = inode::unpack(ino) {
+        if let Some((x, z)) = inode::unpack(ino) {
              let offset = offset as u64;
              let size = size as usize;
-             // Pass x, z to virtual file so it knows what to generate?
-             // Currently VirtualFile.read_at doesn't take x,z. 
-             // But VirtualFile.read_at logic essentially calculates x,z from offset assuming it is *A* region file.
-             // Wait. VirtualFile design assumes it represents ONE file.
-             // But now we have MANY files (r.0.0, r.0.1, ...).
-             // If I ask for r.1.1.mca, and I read offset 0, VirtualFile::read_at needs to know it is r.1.1.
              
-             // CRITICAL FIX: VirtualFile needs to know which region it is simulating?
-             // OR: VirtualFile::read_at needs to take (region_x, region_z).
-             
-             // The current VirtualFile implementation:
-             // region::get_chunk_coords_from_offset(data_read_offset) -> (rel_x, rel_z)
-             // This is RELATIVE to the region (0..31).
-             // AND: self.generator.generate_chunk(rel_x, rel_z)
-             // This generator needs ABSOLUTE coordinates if we want distinct content for distinct regions!
-             
-             // For now, let's just make it work for "any" region (they will all look identical).
-             // That is acceptable for the "Stub" phase.
-             
-             reply.data(&self.virtual_file.read_at(offset, size));
+             // Now we pass the region identity to the virtual file
+             // which will use it to calculate absolute world coordinates
+             reply.data(&self.virtual_file.read_at(offset, size, x, z));
         } else {
             reply.data(&[]);
         }

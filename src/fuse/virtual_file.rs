@@ -11,7 +11,7 @@ impl VirtualFile {
         Self { generator }
     }
 
-    pub fn read_at(&self, offset: u64, size: usize) -> Vec<u8> {
+    pub fn read_at(&self, offset: u64, size: usize, region_x: i32, region_z: i32) -> Vec<u8> {
         let mut response_data = Vec::with_capacity(size);
 
         // --- 1. HEADER GENERATION (0..8192) ---
@@ -36,8 +36,11 @@ impl VirtualFile {
 
             // Determine which chunk we hit
             if let Some((rel_x, rel_z)) = region::get_chunk_coords_from_offset(data_read_offset) {
-                // Generate chunk!
-                if let Ok(nbt_data) = self.generator.generate_chunk(rel_x, rel_z) {
+                // Generate chunk with ABSOLUTE coordinates
+                let abs_x = region_x * 32 + rel_x;
+                let abs_z = region_z * 32 + rel_z;
+                
+                if let Ok(nbt_data) = self.generator.generate_chunk(abs_x, abs_z) {
                     // Use helper to compress and wrap
                     if let Some(chunk_blob) = region::compress_and_wrap_chunk(&nbt_data) {
                         let chunk_start_file_offset = region::get_chunk_file_offset(rel_x, rel_z);
@@ -96,8 +99,8 @@ mod tests {
         let generator = Arc::new(MockGenerator);
         let vf = VirtualFile::new(generator);
 
-        // Read first 10 bytes of header
-        let data = vf.read_at(0, 10);
+        // Read first 10 bytes of header. Region 0,0
+        let data = vf.read_at(0, 10, 0, 0);
         assert_eq!(data.len(), 10);
     }
 
@@ -110,8 +113,8 @@ mod tests {
         // Header is 8192 bytes
         let chunk_offset = region::get_chunk_file_offset(0, 0); 
         
-        // Read 5 bytes from there
-        let data = vf.read_at(chunk_offset, 5);
+        // Read 5 bytes from there. Region 0,0
+        let data = vf.read_at(chunk_offset, 5, 0, 0);
         assert_eq!(data.len(), 5);
         
         // The first 4 bytes are length (big endian). 

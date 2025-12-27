@@ -1,4 +1,18 @@
 
+// 30 bits for X and Z. Range +/- 500 million.
+// Flag at bit 63 (0x8000...)
+// Structure: [1: Flag] [1: Unused] [30: X] [2: Unused] [30: Z]
+// Actually simpler: 
+// [1: Flag] [1: Unused] [31: X(30 bits?? no, let's use 30)] -> 32 + 30 = 62.
+// Let's do:
+// Bit 63: Flag
+// Bit 32..61: X (30 bits)
+// Bit 0..29: Z (30 bits)
+// 30 bits gives 1 billion range. Offset by 500,000,000.
+
+const OFFSET: i32 = 500_000_000;
+const MASK: u64 = 0x3FFFFFFF; // 30 bits
+
 pub const REGION_INODE_START: u64 = 0x8000_0000_0000_0000;
 
 pub fn is_region_inode(ino: u64) -> bool {
@@ -6,18 +20,24 @@ pub fn is_region_inode(ino: u64) -> bool {
 }
 
 pub fn pack(x: i32, z: i32) -> u64 {
-    let u_x = (x as u32) as u64;
-    let u_z = (z as u32) as u64;
-    REGION_INODE_START | (u_x << 32) | u_z
+    // We assume x and z are within +/- 500M. Minecraft is +/- 60k regions. Safe.
+    let x_enc = (x + OFFSET) as u64 & MASK;
+    let z_enc = (z + OFFSET) as u64 & MASK;
+    
+    REGION_INODE_START | (x_enc << 32) | z_enc
 }
 
 pub fn unpack(ino: u64) -> Option<(i32, i32)> {
     if !is_region_inode(ino) {
         return None;
     }
-    let val = ino & !REGION_INODE_START;
-    let x = (val >> 32) as u32 as i32;
-    let z = (val & 0xFFFFFFFF) as u32 as i32;
+    
+    let x_enc = (ino >> 32) & MASK;
+    let z_enc = ino & MASK;
+    
+    let x = (x_enc as i32) - OFFSET;
+    let z = (z_enc as i32) - OFFSET;
+    
     Some((x, z))
 }
 
@@ -32,7 +52,9 @@ mod tests {
             (1, 1),
             (-1, -1),
             (100, -100),
-            (i32::MAX, i32::MIN),
+            (10_000_000, -10_000_000), // Minecraft world limit is ~30M blocks (~60k regions), this is plenty
+            // (i32::MAX, i32::MIN), // We don't support full i32 anymore, only +/- 500M
+            (499_999_999, -499_999_999), 
         ];
 
         for (x, z) in coords {
