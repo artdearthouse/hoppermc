@@ -1,6 +1,11 @@
 use clap::Parser;
 use std::path::PathBuf;
 
+mod chunk; 
+mod storage;    
+mod generator;
+mod region;
+
 mod fuse;
 use fuse::McFUSE;
 
@@ -17,11 +22,18 @@ async fn main() {
     let args = Args::parse();
 
 
-    let options = vec![];
+    use fuser::MountOption;
+    let options = vec![MountOption::AllowOther, MountOption::RW];
+
+    use std::sync::Arc;
+    use generator::flat::FlatGenerator;
+
+    let generator = Arc::new(FlatGenerator);
+    let fs = McFUSE { generator };
 
     println!("Mounting FUSE to {:?} (Background)", args.mountpoint);
     
-    let _session = fuser::spawn_mount2(McFUSE, &args.mountpoint, &options).unwrap();
+    let _session = fuser::spawn_mount2(fs, &args.mountpoint, &options).unwrap();
 
     println!("Mounted successfully! Press Ctrl+C to unmount");
     

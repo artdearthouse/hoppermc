@@ -27,6 +27,7 @@ RUN cargo build --release
 FROM debian:trixie-slim
 
 RUN apt-get update && apt-get install -y fuse3 tini ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN sed -i 's/#user_allow_other/user_allow_other/' /etc/fuse.conf
 
 COPY --from=builder /usr/src/app/mc-anvil-db/target/release/mc-anvil-db /usr/local/bin/mc-anvil-db
 
