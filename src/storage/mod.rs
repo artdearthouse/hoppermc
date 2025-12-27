@@ -48,4 +48,8 @@ pub trait ChunkStorage: Send + Sync {
     /// Get all existing chunks within a specific region.
     /// Used to generate the region header.
     fn get_region_chunks(&self, region: crate::region::RegionPos) -> Vec<ChunkPos>;
+
+    /// List all regions that have at least one chunk stored.
+    /// Used for FUSE readdir.
+    fn list_regions(&self) -> Vec<crate::region::RegionPos>;
 }

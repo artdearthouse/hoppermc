@@ -194,4 +194,23 @@ impl ChunkStorage for PostgresStorage {
             chunks
         })
     }
+
+    fn list_regions(&self) -> Vec<crate::region::RegionPos> {
+        self.rt.block_on(async {
+            let mut regions = Vec::new();
+            if let Ok(client) = self.pool.get().await {
+                // We use floor to handle negative coordinates correctly (like div_euclid in Rust)
+                // x::float8 / 32 gives correct fractional part, floor rounds down towards -inf.
+                if let Ok(rows) = client.query(
+                    "SELECT DISTINCT floor(x::float8 / 32)::int, floor(z::float8 / 32)::int FROM chunks", 
+                    &[]
+                ).await {
+                    for row in rows {
+                        regions.push(crate::region::RegionPos::new(row.get(0), row.get(1)));
+                    }
+                }
+            }
+            regions
+        })
+    }
 }

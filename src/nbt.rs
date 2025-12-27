@@ -95,14 +95,56 @@ mod opt_long_array {
     where
         D: Deserializer<'de>,
     {
+        use serde::de::{self, Visitor, SeqAccess};
+        use std::fmt;
+
+        struct LongArrayOrListVisitor;
+
+        impl<'de> Visitor<'de> for LongArrayOrListVisitor {
+            type Value = Option<Vec<i64>>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("an NBT LongArray or a list of longs")
+            }
+
+            fn visit_newtype_struct<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                let la = LongArray::deserialize(deserializer)?;
+                Ok(Some(la.into_inner()))
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let mut values = Vec::new();
+                while let Some(value) = seq.next_element()? {
+                    values.push(value);
+                }
+                Ok(Some(values))
+            }
+
+            fn visit_none<E>(self) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(None)
+            }
+
+            fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                deserializer.deserialize_any(self)
+            }
+        }
+
         if deserializer.is_human_readable() {
-            // JSON: Deserialize as plain list
             Option::<Vec<i64>>::deserialize(deserializer)
         } else {
-            // NBT: Deserialize as LongArray tag
-            // Direct deserialization into LongArray
-            LongArray::deserialize(deserializer)
-                .map(|la| Some(la.into_inner()))
+            deserializer.deserialize_any(LongArrayOrListVisitor)
         }
     }
 }

@@ -101,7 +101,9 @@ impl AnvilFS {
             .collect();
             
         // Debug
-        // log::info!("Reading region {:?}. Present chunks: {}", region, present_indices.len());
+        log::info!("READ: Region {:?} ({} chunks found). Offset: {}, Size: {}", 
+            region, present_indices.len(), offset, size
+        );
 
         // Zone A: Header (0 - HEADER_SIZE)
         if offset < HEADER_SIZE {
@@ -209,6 +211,15 @@ impl Filesystem for AnvilFS {
             if offset == 0 {
                 let _ = reply.add(1, 0, FileType::Directory, ".");
                 let _ = reply.add(1, 1, FileType::Directory, "..");
+                
+                // List dynamic region files
+                let regions = self.chunks.get_storage().list_regions();
+                for (i, region) in regions.into_iter().enumerate() {
+                    let name = format!("r.{}.{}.mca", region.x, region.z);
+                    let file_ino = self.inodes.get_or_create(region);
+                    // Offset starts at 2 (since 0 and 1 are . and ..)
+                    let _ = reply.add(file_ino, (i + 2) as i64, FileType::RegularFile, &name);
+                }
             }
             reply.ok();
         } else {
@@ -264,7 +275,7 @@ impl Filesystem for AnvilFS {
         if offset >= 8192 && data.len() > 5 {
              match self.chunks.save_chunk(data) {
                 Ok(_) => {
-                    log::info!("Chunk save successful");
+                    log::info!("WRITE SUCCESS: Saved chunk at offset {} ({} bytes)", offset, data.len());
                     reply.written(data.len() as u32);
                 },
                 Err(e) => {
@@ -274,9 +285,9 @@ impl Filesystem for AnvilFS {
              }
         } else {
             if offset < 8192 {
-                log::info!("Ignoring header write at {}", offset);
+                log::info!("WRITE IGNORED: Header write at offset {}", offset);
             } else {
-                log::info!("Ignoring small/invalid write at {}, len={}", offset, data.len());
+                log::info!("WRITE IGNORED: Small/invalid write at {}, len={}", offset, data.len());
             }
             // Ignore header writes or tiny fragments
             reply.written(data.len() as u32);

@@ -58,6 +58,20 @@ impl ChunkStorage for MemoryStorage {
             .cloned()
             .collect()
     }
+
+    fn list_regions(&self) -> Vec<crate::region::RegionPos> {
+        let chunks = self.chunks.read().unwrap();
+        let mut regions = chunks.keys()
+            .map(|p| crate::region::RegionPos::new(
+                crate::region::chunk_to_region(p.x),
+                crate::region::chunk_to_region(p.z)
+            ))
+            .collect::<Vec<_>>();
+        
+        regions.sort_by(|a, b| a.x.cmp(&b.x).then(a.z.cmp(&b.z)));
+        regions.dedup();
+        regions
+    }
 }
 
 #[cfg(test)]
