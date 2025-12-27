@@ -1,0 +1,16 @@
+[package]
+name = "mc-anvil-db"
+version = "0.0.1"
+edition = "2024"
+
+[dependencies]
+fuser = "0.16.0"
+libc = "0.2"
+env_logger = "0.11"
+log = "0.4"
+# for NBT
+fastnbt = "2.6"
+serde = { version = "1.0", features = ["derive"] }
+serde_bytes = "0.11"
+# for compression 
+flate2 = "1.1"

@@ -1,0 +1,62 @@
+services:
+  mc-anvil-db:
+    build: .
+    container_name: mc-anvil-db
+    restart: unless-stopped
+    cap_add:
+      - SYS_ADMIN        # Allow Host Mount
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+    environment:
+      - REDIS_URL=redis://redis:6379 
+    volumes:
+      - type: bind
+        source: ./fuse_region
+        target: /mnt/region
+        bind:
+          propagation: rshared
+    healthcheck:
+      test: ["CMD", "mountpoint", "-q", "/mnt/region"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    depends_on:
+      redis:
+        condition: service_healthy
+  redis:
+    image: redis:8-alpine
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    volumes:
+      - redis_data:/data
+  minecraft:
+    image: itzg/minecraft-server:java21-alpine
+    pull_policy: daily
+    tty: true
+    stdin_open: true
+    ports:
+      - "25565:25565"
+    environment:
+      EULA: "TRUE"
+      TYPE: PAPER
+      VERSION: 1.21.11
+    volumes:
+      - minecraft_data:/data
+      - type: bind
+        source: ./fuse_region
+        target: /data/world/region
+        bind:
+          propagation: rslave
+    depends_on:
+      mc-anvil-db:
+        condition: service_healthy
+
+volumes:
+  redis_data:
+  minecraft_data:
