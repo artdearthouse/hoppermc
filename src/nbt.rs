@@ -1,7 +1,14 @@
+//! NBT (Named Binary Tag) structures for Minecraft chunk data.
+//!
+//! These structures are serialized using fastnbt to create valid
+//! Minecraft chunk data compatible with version 1.21.1+.
+
 use serde::Serialize;
 
-// --- Main Chunk Structure ---
-// Represents the root of the .mca data hierarchy
+/// Minecraft data version for 1.21.1
+pub const DATA_VERSION: i32 = 3955;
+
+/// Main chunk structure - the root of NBT hierarchy in .mca files.
 #[derive(Debug, Serialize)]
 pub struct ChunkData {
     // Minecraft 1.21.1 requires DataVersion 3955.

@@ -1,42 +1,144 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working with this repository.
 
 ## Project Overview
 
-mc-anvil-db is a Rust-based FUSE filesystem for Minecraft worlds. It uses fuser to mount Minecraft world data, with fastnbt for NBT parsing and flate2 for compression. Redis is used for data storage/caching.
+**mc-anvil-db** is a Rust FUSE filesystem that generates Minecraft world chunks procedurally. The server reads virtual `.mca` region files, and we generate chunk data on-the-fly.
 
 ## Build Commands
 
 ```bash
 # Local development
 cargo build --release
+cargo check              # Fast type checking
+cargo test               # Run tests
 
-# Docker build and run
+# Docker
 docker compose up --build
-
-# Run specific service
-docker compose up mc-anvil-db
+docker compose logs -f mc-anvil-db
 ```
 
 ## Architecture
 
-**Three-container Docker setup:**
-- `mc-anvil-db` - Rust FUSE filesystem that mounts at `/mnt/world`
-- `redis` - Data storage with AOF persistence
-- `minecraft` - Paper Minecraft server (itzg/minecraft-server)
+### Module Structure
 
-**Key dependencies:**
-- `fuser` - FUSE bindings for Rust
-- `fastnbt` - Minecraft NBT format parsing
-- `flate2` - Compression for world data
+```
+src/
+├── main.rs           # Entry point, mounts FUSE
+├── fuse/             # FUSE filesystem layer
+│   ├── mod.rs        # AnvilFS struct, Filesystem trait impl
+│   └── inode.rs      # Inode ↔ RegionPos mapping
+├── region/           # MCA file format
+│   ├── mod.rs        # RegionPos, coordinate helpers
+│   └── header.rs     # Location/timestamp table generation
+├── chunk/            # Chunk operations
+│   ├── mod.rs        # ChunkProvider (storage + generator)
+│   └── generator.rs  # Procedural generation (flat world)
+├── storage/          # Storage backends
+│   ├── mod.rs        # ChunkStorage trait
+│   └── memory.rs     # HashMap-based (dev/testing)
+└── nbt.rs            # NBT structs for fastnbt serialization
+```
 
-**Container requirements:**
-- FUSE requires `SYS_ADMIN` capability and `/dev/fuse` device
-- Uses `rshared` bind propagation for FUSE mounts
-- AppArmor unconfined for FUSE operations
+### Key Abstractions
 
-## Environment Variables
+1. **ChunkStorage trait** (`storage/mod.rs`)
+   - Abstract interface for any storage backend
+   - Implementations: MemoryStorage, (TODO) RedisStorage, PostgresStorage
 
-- `REDIS_URL` - Redis connection string (default: `redis://redis:6379`)
-- `RUST_LOG` - Logging level (default: `info`)
+2. **ChunkProvider** (`chunk/mod.rs`)
+   - Combines storage lookup with procedural generation
+   - First checks storage, then falls back to generator
+
+3. **AnvilFS** (`fuse/mod.rs`)
+   - Implements fuser::Filesystem trait
+   - Handles FUSE callbacks (read, write, lookup, etc.)
+
+4. **RegionPos** (`region/mod.rs`)
+   - Represents region file coordinates (parsed from `r.X.Z.mca`)
+
+### Data Flow
+
+```
+Minecraft read request
+    ↓
+FUSE lookup ("r.0.0.mca") → InodeMap → inode
+    ↓
+FUSE read (inode, offset, size)
+    ↓
+AnvilFS.read_region()
+    ├── Header zone (0-8191): Header::generate()
+    └── Chunk zone (8192+): ChunkProvider.get_chunk()
+                                ├── Check MemoryStorage
+                                └── Generate if not found
+    ↓
+Return bytes to Minecraft
+```
+
+## Key Dependencies
+
+- `fuser` - FUSE bindings
+- `fastnbt` - NBT serialization
+- `flate2` - Zlib compression
+- `serde` - Serialization framework
+
+## Docker Setup
+
+Three containers:
+1. **mc-anvil-db** - FUSE driver (privileged, /dev/fuse)
+2. **redis** - Storage backend (TODO: integrate)
+3. **minecraft** - Paper server
+
+FUSE requires:
+- `cap_add: SYS_ADMIN`
+- `devices: /dev/fuse`
+- `propagation: rshared` for bind mounts
+- `apparmor:unconfined`
+
+## Development Notes
+
+### Adding a New Storage Backend
+
+1. Create `src/storage/redis.rs`
+2. Implement `ChunkStorage` trait
+3. Add to `src/storage/mod.rs`
+4. Use in `main.rs`
+
+### Chunk Format
+
+MCA file structure:
+- Bytes 0-4095: Location table (1024 × 4 bytes)
+- Bytes 4096-8191: Timestamp table
+- Bytes 8192+: Chunk data (sectors)
+
+Each chunk entry: `[length:4][compression:1][nbt:N]`
+
+### Testing
+
+```bash
+# Unit tests
+cargo test
+
+# Manual FUSE test
+mkdir /tmp/test-mount
+cargo run &
+ls /tmp/test-mount/
+cat /tmp/test-mount/r.0.0.mca | xxd | head
+fusermount -u /tmp/test-mount
+```
+
+## Common Issues
+
+1. **FUSE mount stuck after crash**
+   ```bash
+   sudo fusermount -uz /path/to/mount
+   ```
+
+2. **Permission denied on /dev/fuse**
+   - Add user to `fuse` group
+   - Or run with sudo
+
+3. **Paper "truncated header" errors**
+   - Usually means read() didn't return enough bytes
+   - Check zone handling in `AnvilFS.read_region()`
