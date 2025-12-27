@@ -1,17 +1,14 @@
 
-// 30 bits for X and Z. Range +/- 500 million.
-// Flag at bit 63 (0x8000...)
-// Structure: [1: Flag] [1: Unused] [30: X] [2: Unused] [30: Z]
-// Actually simpler: 
-// [1: Flag] [1: Unused] [31: X(30 bits?? no, let's use 30)] -> 32 + 30 = 62.
-// Let's do:
-// Bit 63: Flag
-// Bit 32..61: X (30 bits)
-// Bit 0..29: Z (30 bits)
-// 30 bits gives 1 billion range. Offset by 500,000,000.
+// 24 bits for X and Z. Range +/- 8 million regions.
+// Flag at bit 63 (Region) and 62 (Generic)
+// Structure:
+// Bit 63: Region Flag
+// Bit 62: Generic Flag
+// Bits 24..47: X (24 bits)
+// Bits 0..23: Z (24 bits)
 
-const OFFSET: i32 = 500_000_000;
-const MASK: u64 = 0x3FFFFFFF; // 30 bits
+const OFFSET: i32 = 8_000_000;
+const MASK: u64 = 0xFFFFFF; // 24 bits
 
 pub const REGION_INODE_START: u64 = 0x8000_0000_0000_0000;
 pub const GENERIC_INODE_START: u64 = 0x4000_0000_0000_0000;
@@ -25,11 +22,11 @@ pub fn is_generic_inode(ino: u64) -> bool {
 }
 
 pub fn pack(x: i32, z: i32) -> u64 {
-    // We assume x and z are within +/- 500M. Minecraft is +/- 60k regions. Safe.
+    // Offset to make positive
     let x_enc = (x + OFFSET) as u64 & MASK;
     let z_enc = (z + OFFSET) as u64 & MASK;
     
-    REGION_INODE_START | (x_enc << 32) | z_enc
+    REGION_INODE_START | (x_enc << 24) | z_enc
 }
 
 // FNV-1a 64-bit hash
@@ -45,7 +42,6 @@ fn fnv1a_hash(text: &str) -> u64 {
 pub fn pack_generic(name: &str) -> u64 {
     let hash = fnv1a_hash(name);
     // Mask to 62 bits to avoid colliding with flags (top 2 bits)
-    // Actually we just set the second highest bit
     GENERIC_INODE_START | (hash & 0x3FFF_FFFF_FFFF_FFFF)
 }
 
@@ -54,7 +50,7 @@ pub fn unpack(ino: u64) -> Option<(i32, i32)> {
         return None;
     }
     
-    let x_enc = (ino >> 32) & MASK;
+    let x_enc = (ino >> 24) & MASK;
     let z_enc = ino & MASK;
     
     let x = (x_enc as i32) - OFFSET;
@@ -74,9 +70,8 @@ mod tests {
             (1, 1),
             (-1, -1),
             (100, -100),
-            (10_000_000, -10_000_000), // Minecraft world limit is ~30M blocks (~60k regions), this is plenty
-            // (i32::MAX, i32::MIN), // We don't support full i32 anymore, only +/- 500M
-            (499_999_999, -499_999_999), 
+            (7_000_000, -7_000_000), // Within +/- 8M
+            (-7_999_999, 7_999_999), 
         ];
 
         for (x, z) in coords {

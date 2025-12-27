@@ -15,11 +15,9 @@ impl VirtualFile {
         let mut response_data = Vec::with_capacity(size);
 
         // --- 1. HEADER GENERATION (0..8192) ---
-        // If the request overlaps the header
         if offset < region::HEADER_BYTES {
             let header = region::generate_header();
             
-            // Copy the requested part of the header into the response
             let start_in_header = offset as usize;
             let end_in_header = std::cmp::min(start_in_header + size, region::HEADER_BYTES as usize);
             if start_in_header < region::HEADER_BYTES as usize {
@@ -28,20 +26,17 @@ impl VirtualFile {
         }
 
         // --- 2. CHUNK DATA GENERATION (8192+) ---
-        // Loop until we filled the buffer or confirmed we are out of bounds
         while response_data.len() < size {
             let current_len = response_data.len();
             let data_read_offset = offset + current_len as u64;
             let needed = size - current_len;
 
-            // Determine which chunk we hit
             if let Some((rel_x, rel_z)) = region::get_chunk_coords_from_offset(data_read_offset) {
                 // Generate chunk with ABSOLUTE coordinates
                 let abs_x = region_x * 32 + rel_x;
                 let abs_z = region_z * 32 + rel_z;
                 
                 if let Ok(nbt_data) = self.generator.generate_chunk(abs_x, abs_z) {
-                    // Use helper to compress and wrap
                     if let Some(chunk_blob) = region::compress_and_wrap_chunk(&nbt_data) {
                         let chunk_start_file_offset = region::get_chunk_file_offset(rel_x, rel_z);
                         
@@ -53,7 +48,7 @@ impl VirtualFile {
                                 let available = chunk_blob.len() - local_offset;
                                 let to_copy = std::cmp::min(available, needed);
                                 response_data.extend_from_slice(&chunk_blob[local_offset..local_offset + to_copy]);
-                                continue; // We made progress
+                                continue; 
                             } else {
                                 // sparse filling
                                 let chunk_end_offset = chunk_start_file_offset + (region::SECTORS_PER_CHUNK as u64 * region::SECTOR_BYTES);
@@ -63,9 +58,12 @@ impl VirtualFile {
                                 response_data.resize(current_len + zeros_to_give, 0);
                                 continue;
                             }
+                        } else {
+                             // data_read_offset < chunk_start_file_offset
+                             break;
                         }
-                    }
-                }
+                    } 
+                } 
             }
             
             // If we are here, we failed to map to a chunk (EOF or Error) or Generation Failed
@@ -74,7 +72,7 @@ impl VirtualFile {
         
         // Pad with zeros if something is missing
         if response_data.len() < size {
-            response_data.resize(size, 0);
+             response_data.resize(size, 0);
         }
 
         response_data

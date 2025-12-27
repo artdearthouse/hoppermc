@@ -344,6 +344,7 @@ impl Filesystem for McFUSE {
     }
 
     // 8. GETXATTR (Extended attributes)
+
     fn getxattr(
         &mut self,
         _req: &Request,
@@ -356,6 +357,22 @@ impl Filesystem for McFUSE {
             // We don't support extended attributes.
             // Return ENODATA (Attribute not found)
             reply.error(ENODATA);
+        } else {
+            reply.error(ENOENT);
+        }
+    }
+
+    // 9. LISTXATTR (List extended attributes)
+    fn listxattr(
+        &mut self,
+        _req: &Request,
+        ino: u64,
+        _size: u32,
+        reply: fuser::ReplyXattr,
+    ) {
+        if inode::is_region_inode(ino) || inode::is_generic_inode(ino) || ino == 1 {
+            // Return empty list of attributes (size 0)
+            reply.size(0);
         } else {
             reply.error(ENOENT);
         }
