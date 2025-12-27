@@ -28,8 +28,8 @@ services:
         condition: service_healthy
 
   db:
-    image: postgis/postgis:16-3.4-alpine
-    container_name: mc_anvil_db_postgres
+    image: postgis/postgis:18-3.6-alpine
+    container_name: postgres
     restart: always
     env_file: .env
     volumes:
@@ -39,8 +39,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
-    ports:
-      - "5432:5432"
 
   adminer:
     image: adminer
