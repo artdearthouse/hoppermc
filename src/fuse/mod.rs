@@ -3,16 +3,10 @@ use libc::ENOENT;
 use std::ffi::OsStr;
 use std::time::{Duration, UNIX_EPOCH};
 
-use std::io::Write;
 use crate::region;
 
 use std::sync::Arc;
 use crate::generator::WorldGenerator;
-
-// Minecraft Understands only zlib (gzip, nocomp, custom) compression
-// but it is much easier to use just zlib (no futher configuration we need)
-use flate2::write::ZlibEncoder;
-use flate2::Compression;
 
 pub struct McFUSE {
     pub generator: Arc<dyn WorldGenerator>,
@@ -36,7 +30,7 @@ const DIR_ATTR_TEMPLATE: FileAttr = FileAttr {
 
 const FILE_ATTR_TEMPLATE: FileAttr = FileAttr {
     ino: 2,
-    size: 8192 + (32 * 32 * 64 * 4096), // Header + Data
+    size: region::HEADER_BYTES + (32 * 32 * region::SECTORS_PER_CHUNK * region::SECTOR_BYTES), // Header + Data
     blocks: 8, // Non-zero blocks count to show it exists
     atime: UNIX_EPOCH,
     mtime: UNIX_EPOCH,
@@ -161,29 +155,13 @@ impl Filesystem for McFUSE {
 
         // --- 1. HEADER GENERATION (0..8192) ---
         // If the request overlaps the header
-        if offset < 8192 {
-            let mut header = vec![0u8; 8192];
-            for i in 0..1024 {
-                let rel_x = i % 32;
-                let rel_z = i / 32;
-                
-                // Calculate where the chunk lies using our Sparse formula
-                let chunk_offset = region::get_chunk_file_offset(rel_x, rel_z);
-                let sector_id = (chunk_offset / 4096) as u32;
-                let sector_count = region::SECTORS_PER_CHUNK as u8;
-
-                // Minecraft stores: [Offset:3 bytes][Count:1 byte] (Big Endian)
-                let loc_idx = (i as usize) * 4;
-                header[loc_idx] = ((sector_id >> 16) & 0xFF) as u8;
-                header[loc_idx + 1] = ((sector_id >> 8) & 0xFF) as u8;
-                header[loc_idx + 2] = (sector_id & 0xFF) as u8;
-                header[loc_idx + 3] = sector_count;
-            }
+        if offset < region::HEADER_BYTES {
+            let header = region::generate_header();
             
             // Copy the requested part of the header into the response
             let start_in_header = offset as usize;
-            let end_in_header = std::cmp::min(start_in_header + size, 8192);
-            if start_in_header < 8192 {
+            let end_in_header = std::cmp::min(start_in_header + size, region::HEADER_BYTES as usize);
+            if start_in_header < region::HEADER_BYTES as usize {
                 response_data.extend_from_slice(&header[start_in_header..end_in_header]);
             }
         }
@@ -203,44 +181,33 @@ impl Filesystem for McFUSE {
                 // Note: In a real system, we should cache this, but for now we regenerate.
                 // Because we use deterministic generation, it is safe.
                 if let Ok(nbt_data) = self.generator.generate_chunk(rel_x, rel_z) {
-                    // Compress (Zlib)
-                    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-                    if encoder.write_all(&nbt_data).is_ok() {
-                        if let Ok(compressed) = encoder.finish() {
+                    // Use helper to compress and wrap
+                    if let Some(chunk_blob) = region::compress_and_wrap_chunk(&nbt_data) {
+                        let chunk_start_file_offset = region::get_chunk_file_offset(rel_x, rel_z);
+                        
+                        // Which part of this blob do we need?
+                        if data_read_offset >= chunk_start_file_offset {
+                            let local_offset = (data_read_offset - chunk_start_file_offset) as usize;
                             
-                            // Form the chunk "Packet": [Length: 4][Type: 1][Data...]
-                            let total_len = (compressed.len() + 1) as u32; // +1 byte for Type
-                            let mut chunk_blob = Vec::new();
-                            chunk_blob.extend_from_slice(&total_len.to_be_bytes()); // Big Endian Length
-                            chunk_blob.push(2); // Type 2 = Zlib
-                            chunk_blob.extend_from_slice(&compressed);
-
-                            let chunk_start_file_offset = region::get_chunk_file_offset(rel_x, rel_z);
-                            
-                            // Which part of this blob do we need?
-                            if data_read_offset >= chunk_start_file_offset {
-                                let local_offset = (data_read_offset - chunk_start_file_offset) as usize;
+                            if local_offset < chunk_blob.len() {
+                                let available = chunk_blob.len() - local_offset;
+                                let to_copy = std::cmp::min(available, needed);
+                                response_data.extend_from_slice(&chunk_blob[local_offset..local_offset + to_copy]);
+                                continue; // We made progress
+                            } else {
+                                // We are reading past the actual data of this chunk (Sparse Void)
+                                // Can we skip fast?
+                                // The chunk allocates 256KB (SECTORS_PER_CHUNK * 4096). 
+                                // We are in the "Padding" zone of this chunk.
+                                // We should fill zeros until end of this chunk or end of request.
                                 
-                                if local_offset < chunk_blob.len() {
-                                    let available = chunk_blob.len() - local_offset;
-                                    let to_copy = std::cmp::min(available, needed);
-                                    response_data.extend_from_slice(&chunk_blob[local_offset..local_offset + to_copy]);
-                                    continue; // We made progress
-                                } else {
-                                    // We are reading past the actual data of this chunk (Sparse Void)
-                                    // Can we skip fast?
-                                    // The chunk allocates 256KB (SECTORS_PER_CHUNK * 4096). 
-                                    // We are in the "Padding" zone of this chunk.
-                                    // We should fill zeros until end of this chunk or end of request.
-                                    
-                                    let chunk_end_offset = chunk_start_file_offset + (region::SECTORS_PER_CHUNK as u64 * 4096);
-                                    let zeros_available = chunk_end_offset.saturating_sub(data_read_offset);
-                                    let zeros_to_give = std::cmp::min(zeros_available as usize, needed);
-                                    
-                                    // Efficient zero filling
-                                    response_data.resize(current_len + zeros_to_give, 0);
-                                    continue;
-                                }
+                                let chunk_end_offset = chunk_start_file_offset + (region::SECTORS_PER_CHUNK as u64 * region::SECTOR_BYTES);
+                                let zeros_available = chunk_end_offset.saturating_sub(data_read_offset);
+                                let zeros_to_give = std::cmp::min(zeros_available as usize, needed);
+                                
+                                // Efficient zero filling
+                                response_data.resize(current_len + zeros_to_give, 0);
+                                continue;
                             }
                         }
                     }

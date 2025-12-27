@@ -1,5 +1,9 @@
 // Sparse Files for Emulationg Real files (so minecraft will see weight of file)
 
+use std::io::Write;
+use flate2::write::ZlibEncoder;
+use flate2::Compression;
+
 pub const SECTOR_BYTES: u64 = 4096; // minecraft uses 4096 bytes per sector     
 pub const HEADER_BYTES: u64 = 8192; // header is 8192 bytes (2 sectors 8kb) 
 
@@ -14,6 +18,45 @@ pub fn get_chunk_file_offset(rel_x: i32, rel_z: i32) -> u64 {
     
     // Offset = Header + (Chunk index * Sector size)
     HEADER_BYTES + (index as u64 * SECTORS_PER_CHUNK * SECTOR_BYTES)
+}
+
+pub fn generate_header() -> Vec<u8> {
+    let mut header = vec![0u8; HEADER_BYTES as usize];
+    for i in 0..1024 {
+        let rel_x = i % 32;
+        let rel_z = i / 32;
+        
+        // Calculate where the chunk lies using our Sparse formula
+        // Let's rely on the canonical get_chunk_file_offset to be safe
+        let chunk_offset = get_chunk_file_offset(rel_x, rel_z);
+        let sector_id = (chunk_offset / SECTOR_BYTES) as u32;
+        let sector_count = SECTORS_PER_CHUNK as u8;
+
+        // Minecraft stores: [Offset:3 bytes][Count:1 byte] (Big Endian)
+        let loc_idx = (i as usize) * 4;
+        header[loc_idx] = ((sector_id >> 16) & 0xFF) as u8;
+        header[loc_idx + 1] = ((sector_id >> 8) & 0xFF) as u8;
+        header[loc_idx + 2] = (sector_id & 0xFF) as u8;
+        header[loc_idx + 3] = sector_count;
+    }
+    header
+}
+
+pub fn compress_and_wrap_chunk(nbt_data: &[u8]) -> Option<Vec<u8>> {
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+    if encoder.write_all(nbt_data).is_ok() {
+        if let Ok(compressed) = encoder.finish() {
+            // Form the chunk "Packet": [Length: 4][Type: 1][Data...]
+            // Type 2 = Zlib
+            let total_len = (compressed.len() + 1) as u32; // +1 byte for Type
+            let mut chunk_blob = Vec::new();
+            chunk_blob.extend_from_slice(&total_len.to_be_bytes()); // Big Endian Length
+            chunk_blob.push(2); 
+            chunk_blob.extend_from_slice(&compressed);
+            return Some(chunk_blob);
+        }
+    }
+    None
 }
 
 
