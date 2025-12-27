@@ -29,7 +29,8 @@ async fn main() {
     use generator::flat::FlatGenerator;
 
     let generator = Arc::new(FlatGenerator);
-    let fs = McFUSE { generator };
+    let virtual_file = fuse::virtual_file::VirtualFile::new(generator);
+    let fs = McFUSE { virtual_file };
 
     println!("Mounting FUSE to {:?} (Background)", args.mountpoint);
     
