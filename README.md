@@ -1,38 +1,35 @@
 # mc-anvil-db
 
-A FUSE-based virtual filesystem for Minecraft that intercepts and simulates `.mca` region files. It provides a programmable storage layer for the Anvil format, enabling on-the-fly chunk generation, ~~remote database backends~~, and virtualized world management with minimal local disk footprint.
+A FUSE-based virtual filesystem for Minecraft that intercepts and simulates `.mca` region files. It provides a programmable storage layer for the Anvil format, enabling on-the-fly chunk generation and virtualized world management with zero local disk footprint.
 
-This screenshot shows a **Stateless Infinite Flat World Generator** - world don't really exists as file, it's just a fully procedural generation of chunks on the fly.
-![Infinite Flat World Demo](demo/infinity_flat_demo.png) 
+![Infinite Flat World Demo](demo/infinity_flat_demo.png)
 
 ## Overview
 
 Currently, this project acts as a **Stateless Infinite Flat World Generator**.
 
-
 **Key Features:**
 - [x] 🚀 **Infinite World**: Generates chunks procedurally as Minecraft requests them (Stateless).
-- [ ] 📁 **Anvil Format**: Emulates standard Minecraft region files (Works with 1.21+).
-- [ ] 🌐 **Pluggable Storage**: Abstract storage backends so Minecraft can read chunks from any storage backend without knowing the implementation (Memory, Redis, PostgreSQL).
-- [x] 🐳 **Docker-first**: Runs in a container with FUSE permissions.
-- [ ] 🔍 **Queryable World**: Minecraft world is potentially queriable via PostgreSQL.
-- [ ] 🌐 **Multi-server**: Potentially we can use same map on different servers simultaneously.
+- [x] 🔄 **Negative Coordinates**: Fully supports infinite exploration in all directions (negative X/Z).
+- [x] 📁 **Anvil Format**: Emulates standard Minecraft region headers and chunk data (Works with Paper 1.21+).
+- [x] 🐳 **Docker-first**: Runs in a container with FUSE permissions (`/dev/fuse`).
+- [x] 🛠 **Generic File Support**: Handles auxiliary files (like backups) gracefully to prevent server crashes.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                  Minecraft Server                    │
-│                    (Paper 1.21.11)                    │
+│                  Minecraft Server                   │
+│                    (Paper 1.21+)                    │
 └─────────────────────┬───────────────────────────────┘
                       │ reads "r.x.z.mca"
                       ▼
 ┌─────────────────────────────────────────────────────┐
-│                    FUSE Layer                        │
+│                    FUSE Layer                       │
 │              (src/fuse/mod.rs)                      │
 │            Intercepts File I/O                      │
 ├─────────────────────────────────────────────────────┤
-│                 World Generator                      │
+│                 World Generator                     │
 │            (src/generator/flat.rs)                  │
 │          Generates chunks on-the-fly                │
 └─────────────────────────────────────────────────────┘
@@ -45,64 +42,53 @@ src/
 ├── main.rs           # Entry point & FUSE Mount
 ├── fuse/
 │   ├── mod.rs        # FUSE Filesystem Logic (Read/Write interception)
-│   └── ...
+│   ├── inode.rs      # Inode packing logic (handling < 0 coordinates)
+│   └── virtual_file.rs # Virtual MCA file logic (Header + Chunk generation)
 ├── generator/
 │   ├── mod.rs        # WorldGenerator Trait
 │   ├── flat.rs       # Flat World Implementation
 │   └── builder.rs    # Helper to build NBT chunks
 ├── chunk.rs          # NBT Data Structures (Chunk, Section, BlockStates)
-├── storage/
-│   └── mod.rs        # ChunkStorage Trait (Interface definition)
-├── region/           # MCA header/offset calculations
-
+└── region/           # MCA header/offset calculations
 ```
 
 ## Storage Backends
 
-The project is **infrastructure-ready** for persistent storage. The Docker Compose environment includes a PostgreSQL (PostGIS) container, and the Rust codebase includes the `ChunkStorage` interface, though the implementation is currently a work in progress.
-
 | Backend | Status | Use Case |
 |---------|--------|----------|
 | **Stateless Generator** | ✅ **Active** | Infinite flat world, testing |
+| `PostgresStorage` | 🛠 **Ready for Dev** | Environment included, code structures present |
 | `MemoryStorage` | 🚧 Planned | Fast temporary storage |
-| `RedisStorage` | 🚧 Planned | Caching |
-| `PostgresStorage` | 🛠 **Infra Ready** | Container running, `ChunkStorage` trait defined |
 
 ## Quick Start
 
 ### With Docker (Recommended)
 
 ```bash
+# 1. Start the FUSE filesystem and Minecraft server
 docker compose up --build
+
+# 2. Connect to localhost:25565
 ```
 
 This starts:
 - `mc-anvil-db`: The FUSE filesystem mounting to `/mnt/region`.
 - `minecraft`: A Paper server configured to use the FUSE mount.
 
-**Note:** Any blocks you place or destroy **will NOT be saved** in the current version. The server "writes" the data, but the FUSE layer simply acknowledges the write without persisting it (`/dev/null` style).
+**Note:** Any blocks you place or destroy **will NOT be saved** in the current "Stateless" mode. The server "writes" the data, but the FUSE layer simply acknowledges the write without persisting it.
 
-
-
-## How It Works (Current)
+## How It Works
 
 1. **Minecraft requests `r.0.0.mca`**: FUSE intercepts the `open` and `read` calls.
 2. **Header Generation**: FUSE calculates where chunks *would* be in a real file.
 3. **Chunk Generation**: When Minecraft reads a specific sector, `FlatGenerator` builds the NBT data (Bedrock, Dirt, Grass) in RAM.
 4. **Compression**: The chunk is Zlib-compressed and sent to Minecraft.
-5. **Writes**: If Minecraft saves the world, FUSE accepts the bytes but discards them (for now).
+5. **Writes**: If Minecraft saves the world, FUSE accepts the bytes (to prevent errors) but generally discards them in stateless mode.
 
-## Configuration
+## Troubleshooting
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `RUST_LOG` | `info` | Log level |
-
-## Requirements
-
-- Linux
-- Docker & Docker Compose
-- FUSE 3 installed on host (required for passing through `/dev/fuse`)
+- **"Transparent Chunks"**: If you see transparent chunks that you can walk on, it usually means the server read "0 bytes" (EOF) unexpectedly. This has been fixed in v0.0.3 by correcting inode packing logic.
+- **Slow Loading**: Ensure debug logging is disabled in production.
 
 ## License
 
