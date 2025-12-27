@@ -1,2 +1,3 @@
 /target
-fuse_region/*
+fuse_region/
+.env
