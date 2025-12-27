@@ -169,3 +169,86 @@ impl ChunkBuilder {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_builder_empty_section() {
+        let builder = ChunkBuilder::new();
+        let section = builder.build_section(0); // Y=0
+        
+        // Empty section -> block_states is None (Implicit Air)
+        assert!(section.block_states.is_none());
+        assert!(section.biomes.is_some()); // Biomes still present
+    }
+
+    #[test]
+    fn test_builder_single_block_uniform() {
+        let mut builder = ChunkBuilder::new();
+        // Fill all 16 layers of section 0 (Y=0..16) with Stone to make it uniform
+        for y in 0..16 {
+            builder.fill_layer(y, "minecraft:stone");
+        }
+        
+        let section = builder.build_section(0);
+        let states = section.block_states.unwrap();
+        
+        // Uniform section -> Palette size 1, No data
+        assert_eq!(states.palette.len(), 1);
+        assert_eq!(states.palette[0].name, "minecraft:stone");
+        assert!(states.data.is_none());
+    }
+
+    #[test]
+    fn test_builder_mixed_blocks_bit_packing() {
+        let mut builder = ChunkBuilder::new();
+        
+        // Place just two blocks in Y=0 section to force palette creation
+        // (0,0,0) -> Stone
+        // (1,0,0) -> Dirt
+        // Rest -> Air (default)
+        builder.set_block(0, 0, 0, "minecraft:stone");
+        builder.set_block(1, 0, 0, "minecraft:dirt");
+        
+        let section = builder.build_section(0);
+        let states = section.block_states.unwrap();
+        
+        // Palette should contain: Air, Stone, Dirt
+        // Note: Hashmap iteration order is random, but length is fixed
+        assert_eq!(states.palette.len(), 3);
+        
+        // Data must be present
+        assert!(states.data.is_some());
+        let long_array = states.data.unwrap();
+        
+        // 3 items -> ceil(log2(3)) = 2 bits. Min is 4 bits.
+        // So we expect 4 bits per block.
+        // Total blocks = 4096. 
+        // Longs needed = ceil(4096 * 4 / 64) = 256 longs.
+        assert_eq!(long_array.len(), 256);
+    }
+    
+    #[test]
+    fn test_bits_calculation_min_4() {
+        let mut builder = ChunkBuilder::new();
+        // Add 2 different blocks (Air is implicit 3rd)
+        builder.set_block(0, 0, 0, "minecraft:a");
+        builder.set_block(0, 0, 1, "minecraft:b");
+        
+        let section = builder.build_section(0);
+        let states = section.block_states.as_ref().unwrap();
+        let _pal_len = states.palette.len(); // Suppress warning
+        
+        // Palette: Air, A, B (3 items). 
+        // log2(3) = 1.58 -> 2 bits.
+        // Min is 4.
+        
+        // We can verify this by checking data length.
+        // 4096 blocks * 4 bits = 16384 bits.
+        // 16384 / 64 = 256 longs.
+        let data_len = states.data.as_ref().unwrap().len();
+        assert_eq!(data_len, 256);
+    }
+}
