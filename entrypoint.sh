@@ -1,6 +1,6 @@
 #!/bin/sh
 
-MOUNTPOINT="/mnt/world"
+MOUNTPOINT="/mnt/region"
 
 cleanup() {
     echo "Received shutdown signal, unmounting..."
@@ -16,7 +16,7 @@ cleanup() {
 trap cleanup 15 2 3
 
 # Run the FUSE driver in background
-mc-anvil-db "$@" &
+mc-anvil-db --mountpoint "$MOUNTPOINT" &
 FUSE_PID=$!
 
 # Wait for it (this allows trap to work)

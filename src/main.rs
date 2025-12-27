@@ -7,7 +7,7 @@ use fuse::McFUSE;
 #[derive(Parser)]
 #[command(name = "mc-anvil-db", about = "FUSE-based virtual filesystem for Minecraft with Storage Backends")]
 pub struct Args {
-    #[arg(short, long, default_value = "/mnt/world")]
+    #[arg(short, long, default_value = "/mnt/region")]
     pub mountpoint: PathBuf,
 }
 

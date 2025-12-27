@@ -14,12 +14,12 @@ services:
       - RUST_LOG=info
     volumes:
       - type: bind
-        source: ./fuse_world
-        target: /mnt/world
+        source: ./fuse_region
+        target: /mnt/region
         bind:
           propagation: rshared
     healthcheck:
-      test: ["CMD", "mountpoint", "-q", "/mnt/world"]
+      test: ["CMD", "mountpoint", "-q", "/mnt/region"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -64,8 +64,8 @@ services:
     volumes:
       - minecraft_data:/data
       - type: bind
-        source: ./fuse_world
-        target: /data/world
+        source: ./fuse_region
+        target: /data/world/region
         bind:
           propagation: rslave
     depends_on:
