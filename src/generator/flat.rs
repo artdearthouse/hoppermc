@@ -28,10 +28,7 @@ impl WorldGenerator for FlatGenerator {
             builder.set_block(8, y, 8, "minecraft:stone");
         }
 
-        // 5. Build!
-        let chunk_root = builder.build(x, z);
-        
-        // Serialize
-        Ok(fastnbt::to_bytes(&chunk_root)?)
+        let bytes = builder.build(x, z)?;
+        Ok(bytes)
     }
 }

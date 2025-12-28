@@ -11,8 +11,10 @@ Currently, this project acts as a **Stateless Infinite Flat World Generator**.
 **Key Features:**
 - [x] 🚀 **Infinite World**: Generates chunks procedurally as Minecraft requests them (Stateless).
 - [x] 🔄 **Negative Coordinates**: Fully supports infinite exploration in all directions (negative X/Z).
+- [x] 🎃 **Pumpkin-Powered Generator**: Uses [Pumpkin-MC](https://github.com/Pumpkin-MC/Pumpkin) for robust and efficient chunk generation and NBT serialization.
 - [x] 📁 **Anvil Format**: Emulates standard Minecraft region headers and chunk data (Works with Paper 1.21+).
 - [x] 🐳 **Docker-first**: Runs in a container with FUSE permissions (`/dev/fuse`).
+- [x] ⚡ **Fast Builds**: Docker pipeline optimized with BuildKit Cache Mounts.
 - [x] 🛠 **Generic File Support**: Handles auxiliary files (like backups) gracefully to prevent server crashes.
 
 ## Architecture
@@ -32,6 +34,10 @@ Currently, this project acts as a **Stateless Infinite Flat World Generator**.
 │                 World Generator                     │
 │            (src/generator/flat.rs)                  │
 │          Generates chunks on-the-fly                │
+├─────────────────────────────────────────────────────┤
+│                 Pumpkin Backend                     │
+│               (Pumpkin World Lib)                   │
+│         Handles Chunk Structure & NBT               │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -47,8 +53,7 @@ src/
 ├── generator/
 │   ├── mod.rs        # WorldGenerator Trait
 │   ├── flat.rs       # Flat World Implementation
-│   └── builder.rs    # Helper to build NBT chunks
-├── chunk.rs          # NBT Data Structures (Chunk, Section, BlockStates)
+│   └── builder.rs    # Pumpkin-based ChunkBuilder
 └── region/           # MCA header/offset calculations
 ```
 
@@ -65,8 +70,8 @@ src/
 ### With Docker (Recommended)
 
 ```bash
-# 1. Start the FUSE filesystem and Minecraft server
-docker compose up --build
+# 1. Start the FUSE filesystem and Minecraft server (Fast Build)
+DOCKER_BUILDKIT=1 docker compose up -d --build
 
 # 2. Connect to localhost:25565
 ```
@@ -79,16 +84,27 @@ This starts:
 
 ## How It Works
 
-1. **Minecraft requests `r.0.0.mca`**: FUSE intercepts the `open` and `read` calls.
-2. **Header Generation**: FUSE calculates where chunks *would* be in a real file.
-3. **Chunk Generation**: When Minecraft reads a specific sector, `FlatGenerator` builds the NBT data (Bedrock, Dirt, Grass) in RAM.
-4. **Compression**: The chunk is Zlib-compressed and sent to Minecraft.
-5. **Writes**: If Minecraft saves the world, FUSE accepts the bytes (to prevent errors) but generally discards them in stateless mode.
+1. **Minecraft requests `r.x.z.mca`**: FUSE intercepts the `open` and `read` calls.
+2. **Header Generation**: FUSE calculates where chunks *would* be in a real file and sends a generated header.
+3. **Chunk Mapping**: It calculates which chunk (X, Z) corresponds to the requested file offset.
+4. **Pumpkin Integration**: `FlatGenerator` asks `ChunkBuilder` to build the chunk.
+5. **Serialization**: `builder.rs` uses **Pumpkin-World** to create and serialize the complex NBT structure (including palettes, sections, and lighting).
+6. **Compression**: The chunk is Zlib-compressed and sent to Minecraft.
 
 ## Troubleshooting
 
-- **"Transparent Chunks"**: If you see transparent chunks that you can walk on, it usually means the server read "0 bytes" (EOF) unexpectedly. This has been fixed in v0.0.3 by correcting inode packing logic.
-- **Slow Loading**: Ensure debug logging is disabled in production.
+-   **"Transparent Chunks"**: If you see transparent chunks that you can walk on, it usually means the server read "0 bytes" (EOF) unexpectedly. This has been fixed in v0.0.3 by correcting inode packing logic.
+-   **Panic on Join**: If `mc-anvil-db` crashes with `index out of bounds` in `pumpkin-world`, ensure you are initializing `ChunkLight` with 24 sections in the builder (Fixed in recent updates).
+
+## Acknowledgments
+
+Special thanks to the **[Pumpkin-MC Team](https://github.com/Pumpkin-MC/Pumpkin)**!
+We utilize their excellent crates (`pumpkin-world`, `pumpkin-data`, `pumpkin-nbt`) to handle:
+*   Standard-compliant Minecraft NBT Serialization.
+*   Efficient Chunk Data Structures (`ChunkData`, `ChunkSections`).
+*   Block State ID resolution.
+
+Using Pumpkin has allowed us to replace hundreds of lines of brittle, custom NBT code with robust, community-tested library calls.
 
 ## License
 

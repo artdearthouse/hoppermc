@@ -1,7 +1,7 @@
 use clap::Parser;
 use std::path::PathBuf;
 
-mod chunk; 
+
 mod storage;    
 mod generator;
 mod region;
