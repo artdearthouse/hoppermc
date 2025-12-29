@@ -34,7 +34,7 @@ The project is a workspace divided into 6 crates:
 - Uses `AtomicU64`/`AtomicUsize` for thread-safe counting without locks.
 - Tracks:
     - **Generation Logic**: Granular breakdown of `Biomes`, `Noise` (terrain), `Surface`, and `Conversion`.
-    - **World Weight**: Tracks actual PostgreSQL table size and compares it with an estimated MCA file size (Efficiency metric).
+    - **World Weight**: Tracks actual PostgreSQL table size (across `pg_raw` or `pg_jsonb` tables).
     - **Filesystem (FUSE)**: Tracks `read_at` Latency, Throughput (MB/s), and Compression Ratios.
     - **I/O**: Cache Hits/Misses, Serialization, Compression.
 - **Reporting**: Prints a detailed summary to `benchmarks/` on shutdown.

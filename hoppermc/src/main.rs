@@ -21,8 +21,8 @@ pub struct Args {
     #[arg(long, env = "SEED", default_value = "0")]
     pub seed: u64,
     
-    /// Storage mode: "nostorage" (stateless) or "raw" (PostgreSQL)
-    #[arg(long, env = "STORAGE", default_value = "raw")]
+    /// Storage mode: "nostorage", "pg_raw", or "pg_jsonb"
+    #[arg(long, env = "STORAGE", default_value = "pg_raw")]
     pub storage: String,
 
     /// Cache size (number of chunks)
@@ -48,17 +48,23 @@ async fn main() {
             println!("Storage mode: NOSTORAGE (stateless, all chunks generated on-the-fly)");
             None
         },
-        "raw" | "postgres" | _ => {
+        "pg_raw" | "raw" | "postgres" | "pg_jsonb" | _ => {
             let database_url = std::env::var("DATABASE_URL")
                 .unwrap_or_else(|_| "postgres://postgres:postgres@db:5432/hoppermc".to_string());
             
-            println!("Storage mode: RAW (PostgreSQL)");
+            let mode = if args.storage.to_lowercase() == "pg_jsonb" {
+                StorageMode::PgJsonb
+            } else {
+                StorageMode::PgRaw
+            };
+
+            println!("Storage mode: {:?} (PostgreSQL)", mode);
             println!("Connecting to storage at {}...", database_url);
             
             // Retry loop for DB connection
             let mut storage_backend = None;
             for i in 0..30 {
-                match PostgresStorage::new(&database_url, StorageMode::Raw).await {
+                match PostgresStorage::new(&database_url, mode).await {
                     Ok(s) => {
                         storage_backend = Some(s);
                         break;

@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 ## [0.0.6-pre3] - 2025-12-30
 
 ### Added
+-   **Storage Mode Renaming**: `raw` mode renamed to `pg_raw` to reflect its PostgreSQL backend.
+-   **New Storage Mode: `pg_jsonb`**: Experimental support for storing Minecraft chunks as structured JSONB in PostgreSQL. Enables direct querying of chunk data via SQL.
 -   **Configurable Pre-generation**: New `--prefetch-radius` arg to proactively generate chunks around the player.
 -   **Concurrent Prefetching**: Background pre-generation tasks now run concurrently (up to 2 parallel tasks) for faster world warming.
 

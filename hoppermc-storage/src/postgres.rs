@@ -31,7 +31,7 @@ impl PostgresStorage {
         let client = self.pool.get().await.context("Failed to get DB connection")?;
         
         match self.mode {
-            StorageMode::Raw => {
+            StorageMode::PgRaw => {
                 client.batch_execute("
                     CREATE TABLE IF NOT EXISTS chunks_raw (
                         x INT,
@@ -41,6 +41,18 @@ impl PostgresStorage {
                         PRIMARY KEY (x, z)
                     );
                 ").await.context("Failed to init raw schema")?;
+            }
+            StorageMode::PgJsonb => {
+                client.batch_execute("
+                    CREATE TABLE IF NOT EXISTS chunks_jsonb (
+                        x INT,
+                        z INT,
+                        data JSONB,
+                        updated_at TIMESTAMP DEFAULT NOW(),
+                        PRIMARY KEY (x, z)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_chunks_jsonb_data ON chunks_jsonb USING GIN (data);
+                ").await.context("Failed to init jsonb schema")?;
             }
             _ => {
                 log::warn!("Schema init for mode {:?} not yet implemented", self.mode);
@@ -56,7 +68,7 @@ impl ChunkStorage for PostgresStorage {
         let client = self.pool.get().await.context("Failed to get DB connection")?;
 
         match self.mode {
-            StorageMode::Raw => {
+            StorageMode::PgRaw => {
                 // Upsert logic
                 client.execute(
                     "INSERT INTO chunks_raw (x, z, data, updated_at) 
@@ -64,6 +76,22 @@ impl ChunkStorage for PostgresStorage {
                      ON CONFLICT (x, z) DO UPDATE SET data = $3, updated_at = NOW()",
                     &[&x, &z, &data],
                 ).await.context("Failed to insert chunk raw")?;
+            }
+            StorageMode::PgJsonb => {
+                // Phase 2: NBT -> JSONB
+                match fastnbt::from_bytes::<serde_json::Value>(data) {
+                    Ok(json_value) => {
+                        client.execute(
+                            "INSERT INTO chunks_jsonb (x, z, data, updated_at) 
+                             VALUES ($1, $2, $3, NOW())
+                             ON CONFLICT (x, z) DO UPDATE SET data = $3, updated_at = NOW()",
+                            &[&x, &z, &json_value],
+                        ).await.context("Failed to insert chunk jsonb")?;
+                    }
+                    Err(e) => {
+                        log::error!("Failed to convert NBT to JSON for ({}, {}): {:?}", x, z, e);
+                    }
+                }
             }
             _ => anyhow::bail!("Save not implemented for mode {:?}", self.mode),
         }
@@ -75,7 +103,7 @@ impl ChunkStorage for PostgresStorage {
         let client = self.pool.get().await.context("Failed to get DB connection")?;
         
         match self.mode {
-             StorageMode::Raw => {
+             StorageMode::PgRaw => {
                  let rows = client.query(
                      "SELECT data FROM chunks_raw WHERE x = $1 AND z = $2",
                      &[&x, &z]
@@ -88,6 +116,21 @@ impl ChunkStorage for PostgresStorage {
                      Ok(None)
                  }
              },
+             StorageMode::PgJsonb => {
+                 let row = client.query_opt("SELECT data FROM chunks_jsonb WHERE x = $1 AND z = $2", &[&x, &z]).await?;
+                 if let Some(row) = row {
+                     let json_value: serde_json::Value = row.get(0);
+                     match fastnbt::to_bytes(&json_value) {
+                         Ok(nbt_data) => Ok(Some(nbt_data)),
+                         Err(e) => {
+                             log::error!("Failed to convert JSON to NBT for ({}, {}): {:?}", x, z, e);
+                             Ok(None)
+                         }
+                     }
+                 } else {
+                     Ok(None)
+                 }
+             }
              _ => Ok(None)
         }
     }
@@ -96,8 +139,13 @@ impl ChunkStorage for PostgresStorage {
         let client = self.pool.get().await.context("Failed to get DB connection")?;
         
         match self.mode {
-            StorageMode::Raw => {
+            StorageMode::PgRaw => {
                 let row = client.query_one("SELECT pg_total_relation_size('chunks_raw')", &[]).await?;
+                let size: i64 = row.get(0);
+                Ok(size as u64)
+            }
+            StorageMode::PgJsonb => {
+                let row = client.query_one("SELECT pg_total_relation_size('chunks_jsonb')", &[]).await?;
                 let size: i64 = row.get(0);
                 Ok(size as u64)
             }

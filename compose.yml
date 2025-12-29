@@ -14,7 +14,7 @@ services:
       - RUST_LOG=info
       - GENERATOR=${GENERATOR:-flat}
       - SEED=${SEED:-12345}
-      - STORAGE=${STORAGE:-raw}
+      - STORAGE=${STORAGE:-pg_raw}
       - BENCHMARK=${BENCHMARK:-false}
       - PREFETCH_RADIUS=${PREFETCH_RADIUS:-0}
       - CACHE_SIZE=${CACHE_SIZE:-500}

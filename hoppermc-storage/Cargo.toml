@@ -11,4 +11,7 @@ deadpool-postgres = { workspace = true }
 anyhow = { workspace = true }
 tokio = { workspace = true }
 log = { workspace = true }
+fastnbt = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 async-trait = "0.1"

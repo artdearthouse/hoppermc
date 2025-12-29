@@ -25,7 +25,7 @@ Currently, this project acts as a **Stateless Infinite World Generator** with mu
 - [x] 🎃 **Pumpkin-Powered Generator**: Uses [Pumpkin-MC](https://github.com/Pumpkin-MC/Pumpkin) for robust and efficient chunk generation and NBT serialization.
 - [x] 🏔️ **Vanilla Terrain (Experimental)**: Realistic terrain with biomes, caves, and surface rules via Pumpkin's staged generation.
 - [x] ⚡ **Performance Benchmarking**: Integrated profiling system breaking down latency by logic steps (Noise/Surface/Biomes).
-- [x] 💾 **Persistence**: Changes are saved to PostgreSQL with real-time storage metrics (DB size vs MCA size).
+- [x] 💾 **Persistence**: PostgreSQL support with `pg_raw` (Binary) and `pg_jsonb` (Structured) modes.
 - [x] 📁 **Anvil Format**: Emulates standard Minecraft region headers and chunk data.
 - [x] 📦 **Compression Support**: Handles ZLib and LZ4 (Minecraft 24w04a+) compressed chunks.
 - [x] ⚡ **Optimized Builds**: Docker pipeline with Git dependency caching and native CPU optimizations.

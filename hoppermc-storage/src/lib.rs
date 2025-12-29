@@ -5,8 +5,8 @@ pub mod postgres;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StorageMode {
-    Raw,            // Phase 1: Blob
-    Jsonb,          // Phase 2: Json
+    PgRaw,          // Phase 1: Blob (formerly Raw)
+    PgJsonb,        // Phase 2: Json
     Hybrid,         // Phase 3: Structured
     Weightless      // Phase 4: Diffs
 }
