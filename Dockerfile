@@ -19,6 +19,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 
 # Build application
 COPY . .
+# Enable native CPU optimizations (SIMD) and other perf flags
+ENV RUSTFLAGS="-C target-cpu=native"
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/src/app/hoppermc/target \
     cargo build --release --workspace && \

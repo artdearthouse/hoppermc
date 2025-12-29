@@ -30,3 +30,10 @@ deadpool-postgres = "0.12"
 pumpkin-data = { git = "https://github.com/Pumpkin-MC/Pumpkin.git", rev = "42c903493a09a4c8d7f4eddc2644464e3871c736" }
 pumpkin-world = { git = "https://github.com/Pumpkin-MC/Pumpkin.git", rev = "42c903493a09a4c8d7f4eddc2644464e3871c736" }
 pumpkin-util = { git = "https://github.com/Pumpkin-MC/Pumpkin.git", rev = "42c903493a09a4c8d7f4eddc2644464e3871c736" }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
