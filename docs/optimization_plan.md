@@ -23,7 +23,7 @@ This document outlines potential performance optimizations for HopperMC, priorit
 | # | Optimization | CPU Impact | RAM Impact | Complexity | Status |
 |---|-------------|------------|------------|------------|--------|
 | 3 | **Parallelize FUSE Request Processing** | **Massive Latency Drop** | +Thread overhead | Low | ✅ DONE |
-| 4 | LRU chunk cache (avoid regeneration) | **-30-50%** | +100-300MB | Medium | ⬜ TODO |
+| 4 | **LRU Chunk Cache** (avoid regeneration) | **-30-50%** | +100-300MB | Medium | ✅ DONE |
 | 5 | Parallel chunk generation (Rayon/Internal) | +CPU, **-70% latency** | +50-100MB | Medium | ⬜ TODO |
 | 6 | Pre-generation (ahead of player) | +CPU burst, **-90% lag** | +200-500MB | High | ⬜ TODO |
 

@@ -817,6 +817,7 @@ dependencies = [
  "hoppermc-storage",
  "libc",
  "log",
+ "lru",
  "tokio",
 ]
 

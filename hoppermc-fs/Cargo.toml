@@ -15,3 +15,4 @@ anyhow = { workspace = true }
 fastnbt = { workspace = true }
 async-trait = "0.1"
 tokio = { workspace = true, features = ["rt", "sync"] }
+lru = "0.16.2"

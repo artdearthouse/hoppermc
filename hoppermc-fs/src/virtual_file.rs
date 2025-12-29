@@ -1,14 +1,17 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use hoppermc_gen::WorldGenerator;
 use hoppermc_anvil as region;
 use hoppermc_storage::ChunkStorage;
 use crate::benchmark::BenchmarkMetrics;
+use lru::LruCache;
+use std::num::NonZeroUsize;
 
 pub struct VirtualFile {
     pub generator: Arc<dyn WorldGenerator>,
     pub storage: Option<Arc<dyn ChunkStorage>>,
     pub rt: tokio::runtime::Handle,
     pub benchmark: Option<Arc<BenchmarkMetrics>>,
+    pub cache: Mutex<LruCache<(i32, i32), Vec<u8>>>,
 }
 
 impl VirtualFile {
@@ -16,9 +19,17 @@ impl VirtualFile {
         generator: Arc<dyn WorldGenerator>, 
         storage: Option<Arc<dyn ChunkStorage>>, 
         rt: tokio::runtime::Handle,
-        benchmark: Option<Arc<BenchmarkMetrics>>
+        benchmark: Option<Arc<BenchmarkMetrics>>,
+        cache_size: usize,
     ) -> Self {
-        Self { generator, storage, rt, benchmark }
+        let cap = NonZeroUsize::new(cache_size).unwrap_or(NonZeroUsize::new(500).unwrap());
+        Self { 
+            generator, 
+            storage, 
+            rt, 
+            benchmark,
+            cache: Mutex::new(LruCache::new(cap)),
+        }
     }
 
     pub fn read_at(&self, offset: u64, size: usize, region_x: i32, region_z: i32) -> Vec<u8> {
@@ -51,96 +62,109 @@ impl VirtualFile {
                 let abs_x = region_x * 32 + rel_x;
                 let abs_z = region_z * 32 + rel_z;
                 
-                // 1. Try to load from Storage first (if storage is enabled)
-                let nbt_res = if let Some(storage) = &self.storage {
-                    let start = std::time::Instant::now();
-                    let storage_data = self.rt.block_on(async {
-                        storage.load_chunk(abs_x, abs_z).await
-                    });
-                    if let Some(bench) = &self.benchmark {
-                        bench.record_load(start.elapsed());
-                    }
+                // Check Cache first
+                let cached_blob: Option<Vec<u8>> = {
+                    let mut cache = self.cache.lock().unwrap();
+                    cache.get(&(abs_x, abs_z)).cloned()
+                };
+                
+                let chunk_blob = if let Some(blob) = cached_blob {
+                    blob
+                } else {
+                    // CACHE MISS - Load/Generate
+                    
+                    // 1. Try to load from Storage first (if storage is enabled)
+                    let nbt_res = if let Some(storage) = &self.storage {
+                        let start = std::time::Instant::now();
+                        let storage_data = self.rt.block_on(async {
+                            storage.load_chunk(abs_x, abs_z).await
+                        });
+                        if let Some(bench) = &self.benchmark {
+                            bench.record_load(start.elapsed());
+                        }
 
-                    match storage_data {
-                        Ok(Some(raw_nbt)) => {
-                            // Found in DB!
-                            // Verify consistency immediately
-                            if let Err(e) = region::verify_chunk_coords(&raw_nbt, abs_x, abs_z) {
-                                log::error!("CRITICAL: DB Corruption detected for ({}, {}). Data coords mismatch: {:?}. Discarding and regenerating.", abs_x, abs_z, e);
-                                // Generation Fallback
+                        match storage_data {
+                            Ok(Some(raw_nbt)) => {
+                                // Found in DB! Verify consistency
+                                if let Err(e) = region::verify_chunk_coords(&raw_nbt, abs_x, abs_z) {
+                                    log::error!("CRITICAL: DB Corruption detected. Discarding and regenerating.");
+                                    // Generation Fallback
+                                    let start_gen = std::time::Instant::now();
+                                    let res = self.generator.generate_chunk(abs_x, abs_z, &self.rt);
+                                    if let Some(bench) = &self.benchmark { bench.record_generation(start_gen.elapsed()); }
+                                    res
+                                } else {
+                                    Ok(raw_nbt)
+                                }
+                            },
+                            Ok(None) => {
+                                // Not in DB, generate it
                                 let start_gen = std::time::Instant::now();
                                 let res = self.generator.generate_chunk(abs_x, abs_z, &self.rt);
-                                if let Some(bench) = &self.benchmark {
-                                    bench.record_generation(start_gen.elapsed());
-                                }
+                                if let Some(bench) = &self.benchmark { bench.record_generation(start_gen.elapsed()); }
                                 res
+                            },
+                            Err(e) => {
+                                log::error!("Error loading chunk from DB: {:?}", e);
+                                let start_gen = std::time::Instant::now();
+                                let res = self.generator.generate_chunk(abs_x, abs_z, &self.rt);
+                                if let Some(bench) = &self.benchmark { bench.record_generation(start_gen.elapsed()); }
+                                res
+                            }
+                        }
+                    } else {
+                        // No storage - always generate
+                        let start_gen = std::time::Instant::now();
+                        let res = self.generator.generate_chunk(abs_x, abs_z, &self.rt);
+                        if let Some(bench) = &self.benchmark { bench.record_generation(start_gen.elapsed()); }
+                        res
+                    };
+
+                    match nbt_res {
+                        Ok(nbt_data) => {
+                            // Verify generated/resultant consistency
+                            if let Err(e) = region::verify_chunk_coords(&nbt_data, abs_x, abs_z) {
+                                log::error!("CRITICAL: Generated chunk coords mismatch for ({}, {}): {:?}", abs_x, abs_z, e);
+                                break; // Broken generator
+                            }
+
+                            if let Some(blob) = region::compress_and_wrap_chunk(&nbt_data) {
+                                // Update Cache
+                                self.cache.lock().unwrap().put((abs_x, abs_z), blob.clone());
+                                blob
                             } else {
-                                Ok(raw_nbt)
+                                break; // Compression fail
                             }
-                        },
-                        Ok(None) => {
-                            // Not in DB, generate it
-                            let start_gen = std::time::Instant::now();
-                            let res = self.generator.generate_chunk(abs_x, abs_z, &self.rt);
-                            if let Some(bench) = &self.benchmark {
-                                bench.record_generation(start_gen.elapsed());
-                            }
-                            res
                         },
                         Err(e) => {
-                            log::error!("Error loading chunk from DB: {:?}", e);
-                            let start_gen = std::time::Instant::now();
-                            let res = self.generator.generate_chunk(abs_x, abs_z, &self.rt);
-                            if let Some(bench) = &self.benchmark {
-                                bench.record_generation(start_gen.elapsed());
-                            }
-                            res
+                            log::error!("Failed to generate/load chunk: {:?}", e);
+                            break;
                         }
+                    }
+                };
+                
+                // Now we have the chunk_blob (from cache or fresh)
+                let chunk_start_file_offset = region::get_chunk_file_offset(rel_x, rel_z);
+                
+                if data_read_offset >= chunk_start_file_offset {
+                    let local_offset = (data_read_offset - chunk_start_file_offset) as usize;
+                    
+                    if local_offset < chunk_blob.len() {
+                        let available = chunk_blob.len() - local_offset;
+                        let to_copy = std::cmp::min(available, needed);
+                        response_data.extend_from_slice(&chunk_blob[local_offset..local_offset + to_copy]);
+                        continue; 
+                    } else {
+                         // sparse filling
+                        let chunk_end_offset = chunk_start_file_offset + (region::SECTORS_PER_CHUNK as u64 * region::SECTOR_BYTES);
+                        let zeros_available = chunk_end_offset.saturating_sub(data_read_offset);
+                        let zeros_to_give = std::cmp::min(zeros_available as usize, needed);
+                        
+                        response_data.resize(current_len + zeros_to_give, 0);
+                        continue;
                     }
                 } else {
-                    // No storage - always generate (stateless mode)
-                    let start_gen = std::time::Instant::now();
-                    let res = self.generator.generate_chunk(abs_x, abs_z, &self.rt);
-                    if let Some(bench) = &self.benchmark {
-                        bench.record_generation(start_gen.elapsed());
-                    }
-                    res
-                };
-
-                if let Ok(nbt_data) = nbt_res {
-                     // Verify generated/resultant consistency
-                    if let Err(e) = region::verify_chunk_coords(&nbt_data, abs_x, abs_z) {
-                        log::error!("CRITICAL: Generated chunk coords mismatch for ({}, {}): {:?}", abs_x, abs_z, e);
-                         // If generator is broken, we are doomed. Returning empty/broken data.
-                         // Maybe break loop?
-                    }
-
-                    if let Some(chunk_blob) = region::compress_and_wrap_chunk(&nbt_data) {
-                        let chunk_start_file_offset = region::get_chunk_file_offset(rel_x, rel_z);
-                        
-                        // Which part of this blob do we need?
-                        if data_read_offset >= chunk_start_file_offset {
-                            let local_offset = (data_read_offset - chunk_start_file_offset) as usize;
-                            
-                            if local_offset < chunk_blob.len() {
-                                let available = chunk_blob.len() - local_offset;
-                                let to_copy = std::cmp::min(available, needed);
-                                response_data.extend_from_slice(&chunk_blob[local_offset..local_offset + to_copy]);
-                                continue; 
-                            } else {
-                                // sparse filling
-                                let chunk_end_offset = chunk_start_file_offset + (region::SECTORS_PER_CHUNK as u64 * region::SECTOR_BYTES);
-                                let zeros_available = chunk_end_offset.saturating_sub(data_read_offset);
-                                let zeros_to_give = std::cmp::min(zeros_available as usize, needed);
-                                
-                                response_data.resize(current_len + zeros_to_give, 0);
-                                continue;
-                            }
-                        } else {
-                             // data_read_offset < chunk_start_file_offset
-                             break;
-                        }
-                    } 
+                     break;
                 } 
             }
             
@@ -223,6 +247,12 @@ impl VirtualFile {
                              log::error!("Failed to save chunk ({}, {}) to DB: {:?}", abs_x, abs_z, e);
                          } else {
                              log::debug!("Chunk ({}, {}) saved to DB successfully.", save_x, save_z);
+                             
+                             // Update Cache with NEW BLOB
+                             if let Some(new_blob) = region::compress_and_wrap_chunk(&raw_nbt) {
+                                 let mut cache = self.cache.lock().unwrap();
+                                 cache.put((save_x, save_z), new_blob);
+                             }
                          }
                      } else {
                          log::debug!("Storage disabled, skipping save for chunk ({}, {}).", save_x, save_z);

@@ -24,6 +24,10 @@ pub struct Args {
     /// Storage mode: "nostorage" (stateless) or "raw" (PostgreSQL)
     #[arg(long, env = "STORAGE", default_value = "raw")]
     pub storage: String,
+
+    /// Cache size (number of chunks)
+    #[arg(long, env("CACHE_SIZE"), default_value_t = 500)]
+    pub cache_size: usize,
 }
 
 #[tokio::main]
@@ -93,7 +97,8 @@ async fn main() {
 
     let handle = tokio::runtime::Handle::current();
     // Clone Arc for VirtualFile, keep original for report
-    let virtual_file = Arc::new(VirtualFile::new(generator, storage, handle, benchmark.clone()));
+    // Clone Arc for VirtualFile, keep original for report
+    let virtual_file = Arc::new(VirtualFile::new(generator, storage, handle, benchmark.clone(), args.cache_size));
     let fs = McFUSE { virtual_file };
 
     println!("Mounting HopperMC FUSE to {:?} (Background)", args.mountpoint);
