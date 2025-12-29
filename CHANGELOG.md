@@ -20,6 +20,7 @@ All notable changes to this project will be documented in this file.
     -   **Refactor**: Extracted core logic to `hoppermc-benchmark` crate for cross-crate usage.
     -   **Metrics**: Tracks generation time (avg/max), storage I/O, and chunk throughput.
     -   **Reporting**: Automatically saves session reports to `benchmarks/benchmark-{timestamp}.txt`.
+    -   **Granular Logic**: Logic time is now broken down into `Biomes`, `Noise` (Terrain), `Surface Rules`, and `Data Conversion` to pinpoint generator bottlenecks.
 
 ---
 
