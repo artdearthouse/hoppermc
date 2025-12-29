@@ -541,18 +541,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4443176a9f2c162692bd3d352d745ef9413eec5782a80d8fd6f8a1ac692a07f7"
 
 [[package]]
-name = "fastnbt"
-version = "2.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29e3bb1f9ba8b6dbb35d89b415216041c2cad0c3e0b329db85ef5d4fc9e80cd6"
-dependencies = [
- "byteorder",
- "cesu8",
- "serde",
- "serde_bytes",
-]
-
-[[package]]
 name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -787,6 +775,64 @@ dependencies = [
 ]
 
 [[package]]
+name = "hoppermc"
+version = "0.0.4"
+dependencies = [
+ "clap",
+ "env_logger",
+ "fuser",
+ "hoppermc-fs",
+ "hoppermc-gen",
+ "tokio",
+]
+
+[[package]]
+name = "hoppermc-anvil"
+version = "0.0.4"
+dependencies = [
+ "anyhow",
+ "flate2",
+]
+
+[[package]]
+name = "hoppermc-fs"
+version = "0.0.4"
+dependencies = [
+ "anyhow",
+ "env_logger",
+ "fuser",
+ "hoppermc-anvil",
+ "hoppermc-gen",
+ "libc",
+ "log",
+]
+
+[[package]]
+name = "hoppermc-gen"
+version = "0.0.4"
+dependencies = [
+ "anyhow",
+ "hoppermc-anvil",
+ "pumpkin-data",
+ "pumpkin-world",
+ "rand 0.10.0-rc.5",
+ "rand_core 0.10.0-rc-2",
+ "tokio",
+]
+
+[[package]]
+name = "hoppermc-storage"
+version = "0.0.4"
+dependencies = [
+ "anyhow",
+ "deadpool-postgres",
+ "hex",
+ "postgis",
+ "tokio",
+ "tokio-postgres",
+]
+
+[[package]]
 name = "indexmap"
 version = "2.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -907,34 +953,6 @@ name = "lz4_flex"
 version = "0.11.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08ab2867e3eeeca90e844d1940eab391c9dc5228783db2ed999acbc0a9ed375a"
-
-[[package]]
-name = "mc-anvil-db"
-version = "0.0.3"
-dependencies = [
- "anyhow",
- "clap",
- "deadpool-postgres",
- "env_logger",
- "fastnbt",
- "flate2",
- "fuser",
- "hex",
- "libc",
- "log",
- "postgis",
- "pumpkin-data",
- "pumpkin-nbt",
- "pumpkin-util",
- "pumpkin-world",
- "rand 0.10.0-rc.5",
- "rand_core 0.10.0-rc-2",
- "serde",
- "serde_bytes",
- "serde_json",
- "tokio",
- "tokio-postgres",
-]
 
 [[package]]
 name = "md-5"
@@ -1587,16 +1605,6 @@ checksum = "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e"
 dependencies = [
  "serde_core",
  "serde_derive",
-]
-
-[[package]]
-name = "serde_bytes"
-version = "0.11.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5d440709e79d88e51ac01c4b72fc6cb7314017bb7da9eeff678aa94c10e3ea8"
-dependencies = [
- "serde",
- "serde_core",
 ]
 
 [[package]]

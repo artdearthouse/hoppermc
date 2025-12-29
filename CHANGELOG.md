@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.4.1] - 2025-12-29
+
+### Changed
+-   **Project Rename**: Renamed project from `mc-anvil-db` to **HopperMC** (`hoppermc`).
+-   **Workspace Restructuring**: Refactored the monolithic structure into a Cargo Workspace with modular crates:
+    -   `hoppermc`: CLI and FUSE mount.
+    -   `hoppermc-fs`: FUSE filesystem implementation.
+    -   `hoppermc-gen`: World generation logic.
+    -   `hoppermc-anvil`: Anvil format utilities.
+    -   `hoppermc-storage`: Storage interfaces.
+
 ## [0.0.4] - 2025-12-28
 
 ### Added

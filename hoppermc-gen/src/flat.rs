@@ -1,7 +1,7 @@
 
 
-use crate::generator::WorldGenerator;
-use crate::generator::builder::ChunkBuilder; // Import our new tool
+use crate::WorldGenerator;
+use crate::builder::ChunkBuilder; // Import our new tool
 
 pub struct FlatGenerator;
 

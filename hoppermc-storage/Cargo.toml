@@ -1,0 +1,12 @@
+[package]
+name = "hoppermc-storage"
+version = "0.0.4.1"
+edition = "2024"
+
+[dependencies]
+tokio-postgres = { workspace = true }
+deadpool-postgres = { workspace = true }
+postgis = { workspace = true }
+hex = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }

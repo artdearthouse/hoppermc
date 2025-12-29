@@ -1,0 +1,13 @@
+[package]
+name = "hoppermc-fs"
+version = "0.0.4.1"
+edition = "2024"
+
+[dependencies]
+hoppermc-anvil = { path = "../hoppermc-anvil" }
+hoppermc-gen = { path = "../hoppermc-gen" }
+fuser = { workspace = true }
+libc = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+anyhow = { workspace = true }

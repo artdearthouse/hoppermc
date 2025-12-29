@@ -1,16 +1,12 @@
 use clap::Parser;
 use std::path::PathBuf;
 
-
-mod storage;    
-mod generator;
-mod region;
-
-mod fuse;
-use fuse::McFUSE;
+use hoppermc_fs::McFUSE;
+use hoppermc_gen::flat::FlatGenerator;
+use hoppermc_fs::virtual_file::VirtualFile;
 
 #[derive(Parser)]
-#[command(name = "mc-anvil-db", about = "FUSE-based virtual filesystem for Minecraft with Storage Backends")]
+#[command(name = "hoppermc", about = "FUSE-based virtual filesystem for Minecraft with Storage Backends")]
 pub struct Args {
     #[arg(short, long, default_value = "/mnt/region")]
     pub mountpoint: PathBuf,
@@ -21,18 +17,16 @@ async fn main() {
     env_logger::init();
     let args = Args::parse();
 
-
     use fuser::MountOption;
     let options = vec![MountOption::AllowOther, MountOption::RW];
 
     use std::sync::Arc;
-    use generator::flat::FlatGenerator;
 
     let generator = Arc::new(FlatGenerator);
-    let virtual_file = fuse::virtual_file::VirtualFile::new(generator);
+    let virtual_file = VirtualFile::new(generator);
     let fs = McFUSE { virtual_file };
 
-    println!("Mounting FUSE to {:?} (Background)", args.mountpoint);
+    println!("Mounting HopperMC FUSE to {:?} (Background)", args.mountpoint);
     
     let _session = fuser::spawn_mount2(fs, &args.mountpoint, &options).unwrap();
 

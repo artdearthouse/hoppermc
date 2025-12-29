@@ -1,4 +1,4 @@
-# mc-anvil-db
+# HopperMC
 
 A FUSE-based virtual filesystem for Minecraft that intercepts and simulates `.mca` region files. It provides a programmable storage layer for the Anvil format, enabling on-the-fly chunk generation and virtualized world management with zero local disk footprint.
 
@@ -14,8 +14,18 @@ Currently, this project acts as a **Stateless Infinite Flat World Generator**.
 - [x] 🎃 **Pumpkin-Powered Generator**: Uses [Pumpkin-MC](https://github.com/Pumpkin-MC/Pumpkin) for robust and efficient chunk generation and NBT serialization.
 - [x] 📁 **Anvil Format**: Emulates standard Minecraft region headers and chunk data (Works with Paper 1.21+).
 - [x] 🐳 **Docker-first**: Runs in a container with FUSE permissions (`/dev/fuse`).
-- [x] ⚡ **Fast Builds**: Docker pipeline optimized with BuildKit Cache Mounts.
+- [x] ⚡ **Fast Builds**: Docker pipeline optimized with Workspace Cache Mounts.
 - [x] 🛠 **Generic File Support**: Handles auxiliary files (like backups) gracefully to prevent server crashes.
+
+## Vision & Goals
+
+This project is not just a filesystem; it is a **Universal Storage Middleware** for Minecraft. By intercepting I/O at the OS level, we decouple the game engine from physical storage.
+
+**Our long-term goals:**
+1.  **Storage Agnostic**: Store your world anywhere—Postgres, Redis, S3, or even distributed across a network.
+2.  **Stateless Gaming**: Treating Minecraft servers as ephemeral compute nodes while keeping world data persistent and shared.
+3.  **P2P & Distributed Worlds**: Enabling multiple servers to simulate different parts of the same continuous world (sharding), paving the way for true MMO-scale Minecraft architecture.
+4.  **Universal Compatibility**: Works with any server core (Vanilla, Paper, Fabric, Forge) because it operates below the application layer.
 
 ## Architecture
 
@@ -28,11 +38,11 @@ Currently, this project acts as a **Stateless Infinite Flat World Generator**.
                       ▼
 ┌─────────────────────────────────────────────────────┐
 │                    FUSE Layer                       │
-│              (src/fuse/mod.rs)                      │
+│                (hoppermc-fs crate)                  │
 │            Intercepts File I/O                      │
 ├─────────────────────────────────────────────────────┤
 │                 World Generator                     │
-│            (src/generator/flat.rs)                  │
+│                (hoppermc-gen crate)                 │
 │          Generates chunks on-the-fly                │
 ├─────────────────────────────────────────────────────┤
 │                 Pumpkin Backend                     │
@@ -41,20 +51,16 @@ Currently, this project acts as a **Stateless Infinite Flat World Generator**.
 └─────────────────────────────────────────────────────┘
 ```
 
-## Project Structure
+## Project Structure (Cargo Workspace)
 
 ```
-src/
-├── main.rs           # Entry point & FUSE Mount
-├── fuse/
-│   ├── mod.rs        # FUSE Filesystem Logic (Read/Write interception)
-│   ├── inode.rs      # Inode packing logic (handling < 0 coordinates)
-│   └── virtual_file.rs # Virtual MCA file logic (Header + Chunk generation)
-├── generator/
-│   ├── mod.rs        # WorldGenerator Trait
-│   ├── flat.rs       # Flat World Implementation
-│   └── builder.rs    # Pumpkin-based ChunkBuilder
-└── region/           # MCA header/offset calculations
+.
+├── Cargo.toml        # Workspace Root
+├── hoppermc/         # CLI Entry Point & FUSE Mount
+├── hoppermc-anvil/   # Anvil Format Details (Offsets, Headers, Compression)
+├── hoppermc-fs/      # FUSE Filesystem Implementation (Inodes, Virtual Files)
+├── hoppermc-gen/     # World Generation & Pumpkin Integration
+└── hoppermc-storage/ # Data Persistence Layers (Postgres, etc.)
 ```
 
 ## Storage Backends
@@ -77,7 +83,7 @@ DOCKER_BUILDKIT=1 docker compose up -d --build
 ```
 
 This starts:
-- `mc-anvil-db`: The FUSE filesystem mounting to `/mnt/region`.
+- `hoppermc`: The FUSE filesystem mounting to `/mnt/region`.
 - `minecraft`: A Paper server configured to use the FUSE mount.
 
 **Note:** Any blocks you place or destroy **will NOT be saved** in the current "Stateless" mode. The server "writes" the data, but the FUSE layer simply acknowledges the write without persisting it.
@@ -94,17 +100,12 @@ This starts:
 ## Troubleshooting
 
 -   **"Transparent Chunks"**: If you see transparent chunks that you can walk on, it usually means the server read "0 bytes" (EOF) unexpectedly. This has been fixed in v0.0.3 by correcting inode packing logic.
--   **Panic on Join**: If `mc-anvil-db` crashes with `index out of bounds` in `pumpkin-world`, ensure you are initializing `ChunkLight` with 24 sections in the builder (Fixed in recent updates).
+-   **Panic on Join**: If `hoppermc` crashes with `index out of bounds` in `pumpkin-world`, ensure you are initializing `ChunkLight` with 24 sections in the builder (Fixed in recent updates).
 
 ## Acknowledgments
 
 Special thanks to the **[Pumpkin-MC Team](https://github.com/Pumpkin-MC/Pumpkin)**!
-We utilize their excellent crates (`pumpkin-world`, `pumpkin-data`, `pumpkin-nbt`) to handle:
-*   Standard-compliant Minecraft NBT Serialization.
-*   Efficient Chunk Data Structures (`ChunkData`, `ChunkSections`).
-*   Block State ID resolution.
-
-Using Pumpkin has allowed us to replace hundreds of lines of brittle, custom NBT code with robust, community-tested library calls.
+We utilize their excellent crates (`pumpkin-world`, `pumpkin-data`, `pumpkin-nbt`) to handle standard-compliant Minecraft NBT Serialization and Data Structures.
 
 ## License
 

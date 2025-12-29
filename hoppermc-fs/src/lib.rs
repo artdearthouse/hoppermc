@@ -2,7 +2,7 @@ use fuser::{FileAttr, FileType, Filesystem, Request};
 use libc::{ENOENT, ENODATA};
 use std::ffi::OsStr;
 use std::time::{Duration, UNIX_EPOCH, SystemTime};
-use crate::region;
+use hoppermc_anvil as region;
 
 
 pub mod virtual_file;

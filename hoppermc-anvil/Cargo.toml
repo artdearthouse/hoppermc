@@ -1,0 +1,8 @@
+[package]
+name = "hoppermc-anvil"
+version = "0.0.4.1"
+edition = "2024"
+
+[dependencies]
+flate2 = { workspace = true }
+anyhow = { workspace = true }

@@ -1,6 +1,6 @@
 use std::sync::Arc;
-use crate::generator::WorldGenerator;
-use crate::region;
+use hoppermc_gen::WorldGenerator;
+use hoppermc_anvil as region;
 
 pub struct VirtualFile {
     pub generator: Arc<dyn WorldGenerator>,

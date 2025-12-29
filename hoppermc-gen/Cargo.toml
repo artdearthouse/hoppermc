@@ -1,0 +1,13 @@
+[package]
+name = "hoppermc-gen"
+version = "0.0.4.1"
+edition = "2024"
+
+[dependencies]
+hoppermc-anvil = { path = "../hoppermc-anvil" }
+pumpkin-world = { workspace = true }
+pumpkin-data = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+rand = { workspace = true }
+rand_core = { workspace = true }

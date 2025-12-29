@@ -1,0 +1,12 @@
+[package]
+name = "hoppermc"
+version = "0.0.4.1"
+edition = "2024"
+
+[dependencies]
+hoppermc-fs = { path = "../hoppermc-fs" }
+hoppermc-gen = { path = "../hoppermc-gen" }
+clap = { workspace = true }
+tokio = { workspace = true }
+env_logger = { workspace = true }
+fuser = { workspace = true }

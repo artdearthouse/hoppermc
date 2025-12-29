@@ -1,7 +1,7 @@
 services:
-  mc-anvil-db:
+  hoppermc:
     build: .
-    container_name: mc-anvil-db
+    container_name: hoppermc
     restart: unless-stopped
     cap_add:
       - SYS_ADMIN
@@ -66,7 +66,7 @@ services:
         bind:
           propagation: rslave
     depends_on:
-      mc-anvil-db:
+      hoppermc:
         condition: service_healthy
 
 volumes:

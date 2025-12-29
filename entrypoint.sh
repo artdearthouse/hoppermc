@@ -16,7 +16,7 @@ cleanup() {
 trap cleanup 15 2 3
 
 # Run the FUSE driver in background
-mc-anvil-db --mountpoint "$MOUNTPOINT" &
+hoppermc --mountpoint "$MOUNTPOINT" &
 FUSE_PID=$!
 
 # Wait for it (this allows trap to work)
