@@ -93,7 +93,7 @@ async fn main() {
 
     let handle = tokio::runtime::Handle::current();
     // Clone Arc for VirtualFile, keep original for report
-    let virtual_file = VirtualFile::new(generator, storage, handle, benchmark.clone());
+    let virtual_file = Arc::new(VirtualFile::new(generator, storage, handle, benchmark.clone()));
     let fs = McFUSE { virtual_file };
 
     println!("Mounting HopperMC FUSE to {:?} (Background)", args.mountpoint);

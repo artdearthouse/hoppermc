@@ -11,8 +11,10 @@ pub mod benchmark;
 
 use virtual_file::VirtualFile;
 
+use std::sync::Arc;
+
 pub struct McFUSE {
-    pub virtual_file: VirtualFile,
+    pub virtual_file: Arc<VirtualFile>,
 }
 
 // Helper to parse "r.x.z.mca"
@@ -277,10 +279,14 @@ impl Filesystem for McFUSE {
     ) {
         if let Some((x, z)) = inode::unpack(ino) {
              let offset = offset as u64;
-             // Pass to virtual file for interception
-             self.virtual_file.write_at(offset, data, x, z);
+             // We must copy data to move it to another thread
+             let data_vec = data.to_vec(); 
              
-             reply.written(data.len() as u32);
+             let vf = self.virtual_file.clone();
+             std::thread::spawn(move || {
+                 vf.write_at(offset, &data_vec, x, z);
+                 reply.written(data_vec.len() as u32);
+             });
         } else if inode::is_generic_inode(ino) {
             // Generic file, just say yes
             reply.written(data.len() as u32);
@@ -305,15 +311,16 @@ impl Filesystem for McFUSE {
              let offset = offset as u64;
              let size = size as usize;
              
-             // Now we pass the region identity to the virtual file
-             // which will use it to calculate absolute world coordinates
-             reply.data(&self.virtual_file.read_at(offset, size, x, z));
-        } else if inode::is_generic_inode(ino) {
-             // Generic files are empty on read
+             let vf = self.virtual_file.clone();
+             std::thread::spawn(move || {
+                  reply.data(&vf.read_at(offset, size, x, z));
+             });
+         } else if inode::is_generic_inode(ino) {
+              // Generic files are empty on read
+              reply.data(&[]);
+         } else {
              reply.data(&[]);
-        } else {
-            reply.data(&[]);
-        }
+         }
     }
 
     // 6. FLUSH (Called on close)

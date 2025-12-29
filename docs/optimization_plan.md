@@ -22,24 +22,25 @@ This document outlines potential performance optimizations for HopperMC, priorit
 
 | # | Optimization | CPU Impact | RAM Impact | Complexity | Status |
 |---|-------------|------------|------------|------------|--------|
-| 3 | LRU chunk cache (avoid regeneration) | **-30-50%** | +100-300MB | Medium | ⬜ TODO |
-| 4 | Parallel chunk generation (thread pool) | +CPU, **-70% latency** | +50-100MB | Medium | ⬜ TODO |
-| 5 | Pre-generation (ahead of player) | +CPU burst, **-90% lag** | +200-500MB | High | ⬜ TODO |
+| 3 | **Parallelize FUSE Request Processing** | **Massive Latency Drop** | +Thread overhead | Low | ✅ DONE |
+| 4 | LRU chunk cache (avoid regeneration) | **-30-50%** | +100-300MB | Medium | ⬜ TODO |
+| 5 | Parallel chunk generation (Rayon/Internal) | +CPU, **-70% latency** | +50-100MB | Medium | ⬜ TODO |
+| 6 | Pre-generation (ahead of player) | +CPU burst, **-90% lag** | +200-500MB | High | ⬜ TODO |
 
 ### 🟡 Medium Priority
 
 | # | Optimization | CPU Impact | RAM Impact | Complexity | Status |
 |---|-------------|------------|------------|------------|--------|
-| 6 | Lazy heightmap calculation | -5-10% | 0 | Low | ⬜ TODO |
-| 7 | ProtoChunk object pool (reuse allocations) | -5-10% | -50MB | Medium | ⬜ TODO |
-| 8 | Inline noise routers (avoid Arc overhead) | -3-5% | -10MB | Low | ⬜ TODO |
+| 7 | Lazy heightmap calculation | -5-10% | 0 | Low | ⬜ TODO |
+| 8 | ProtoChunk object pool (reuse allocations) | -5-10% | -50MB | Medium | ⬜ TODO |
+| 9 | Inline noise routers (avoid Arc overhead) | -3-5% | -10MB | Low | ⬜ TODO |
 
 ### 🟢 Low Priority
 
 | # | Optimization | CPU Impact | RAM Impact | Complexity | Status |
 |---|-------------|------------|------------|------------|--------|
-| 9 | SIMD for noise sampling | -10-20% | 0 | High | ⬜ TODO |
-| 10 | Remove unnecessary clone() calls | -1-3% | -5MB | Low | ⬜ TODO |
+| 10 | SIMD for noise sampling | -10-20% | 0 | High | ⬜ TODO |
+| 11 | Remove unnecessary clone() calls | -1-3% | -5MB | Low | ⬜ TODO |
 
 ---
 
