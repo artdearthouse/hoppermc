@@ -11,7 +11,9 @@ pub struct VirtualFile {
     pub storage: Option<Arc<dyn ChunkStorage>>,
     pub rt: tokio::runtime::Handle,
     pub benchmark: Option<Arc<BenchmarkMetrics>>,
-    pub cache: Mutex<LruCache<(i32, i32), Vec<u8>>>,
+    pub cache: Arc<Mutex<LruCache<(i32, i32), Vec<u8>>>>,
+    pub prefetch_radius: u8,
+    pub prefetch_limiter: Arc<tokio::sync::Semaphore>,
 }
 
 impl VirtualFile {
@@ -21,14 +23,20 @@ impl VirtualFile {
         rt: tokio::runtime::Handle,
         benchmark: Option<Arc<BenchmarkMetrics>>,
         cache_size: usize,
+        prefetch_radius: u8,
     ) -> Self {
         let cap = NonZeroUsize::new(cache_size).unwrap_or(NonZeroUsize::new(500).unwrap());
+        // Limit concurrent heavy generations (e.g. 4 threads)
+        let limiter = Arc::new(tokio::sync::Semaphore::new(4));
+        
         Self { 
             generator, 
             storage, 
             rt, 
             benchmark,
-            cache: Mutex::new(LruCache::new(cap)),
+            cache: Arc::new(Mutex::new(LruCache::new(cap))),
+            prefetch_radius,
+            prefetch_limiter: limiter,
         }
     }
 
@@ -144,6 +152,12 @@ impl VirtualFile {
                                 if let Some(bench) = &self.benchmark {
                                      bench.record_chunk_sizes(nbt_data.len(), blob.len());
                                 }
+                                
+                                // TRIGGER PREFETCH (Fire and Forget)
+                                if self.prefetch_radius > 0 {
+                                    self.trigger_prefetch(abs_x, abs_z);
+                                }
+                                
                                 blob
                             } else {
                                 break; // Compression fail
@@ -281,6 +295,64 @@ impl VirtualFile {
              }
         }
     }
+
+    fn trigger_prefetch(&self, center_x: i32, center_z: i32) {
+        let radius = self.prefetch_radius as i32;
+        let limiter = self.prefetch_limiter.clone();
+        let generator = self.generator.clone();
+        let storage = self.storage.clone();
+        let cache = self.cache.clone(); 
+        
+        let rt_handle = self.rt.clone();
+        let benchmark = self.benchmark.clone();
+        
+        // Spawn background task
+        self.rt.spawn(async move {
+            for dx in -radius..=radius {
+                for dz in -radius..=radius {
+                    if dx == 0 && dz == 0 { continue; } // Skip center
+                    
+                    let tx = center_x + dx;
+                    let tz = center_z + dz;
+                    
+                    // 1. Check Cache (Fast check)
+                    {
+                        if cache.lock().unwrap().contains(&(tx, tz)) {
+                            continue;
+                        }
+                    }
+                    
+                    // 2. Acquire Permit (throttling)
+                    let _permit = limiter.acquire().await.unwrap();
+                    
+                    // 3. Check DB
+                    if let Some(storage) = &storage {
+                        if let Ok(Some(_)) = storage.load_chunk(tx, tz).await {
+                             continue; 
+                        }
+                    }
+                    
+                    // 4. Generate & Save
+                    match generator.generate_chunk(tx, tz, &rt_handle, benchmark.as_deref()) {
+                        Ok(nbt) => {
+                             // Save to DB
+                             if let Some(storage) = &storage {
+                                 let _ = storage.save_chunk(tx, tz, &nbt).await;
+                             }
+                             
+                             // Update Cache
+                             if let Some(blob) = region::compress_and_wrap_chunk(&nbt) {
+                                 cache.lock().unwrap().put((tx, tz), blob);
+                             }
+                        },
+                        Err(e) => {
+                             log::warn!("Prefetch failed for ({}, {}): {:?}", tx, tz, e);
+                        }
+                    }
+                }
+            }
+        });
+    }
 }
 
 #[cfg(test)]
@@ -313,7 +385,7 @@ mod tests {
         let generator = Arc::new(MockGenerator);
         let storage = Arc::new(MockStorage);
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let vf = VirtualFile::new(generator, storage, rt.handle().clone());
+        let vf = VirtualFile::new(generator, storage, rt.handle().clone(), None, 500, 0);
 
         // Read first 10 bytes of header. Region 0,0
         let data = vf.read_at(0, 10, 0, 0);
@@ -325,7 +397,7 @@ mod tests {
         let generator = Arc::new(MockGenerator);
         let storage = Arc::new(MockStorage);
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let vf = VirtualFile::new(generator, storage, rt.handle().clone());
+        let vf = VirtualFile::new(generator, storage, rt.handle().clone(), None, 500, 0);
 
         // Calculate offset for chunk 0,0
         // Header is 8192 bytes

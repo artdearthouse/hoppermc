@@ -28,6 +28,10 @@ pub struct Args {
     /// Cache size (number of chunks)
     #[arg(long, env("CACHE_SIZE"), default_value_t = 500)]
     pub cache_size: usize,
+
+    /// Prefetch radius (chunks). 0 = disabled.
+    #[arg(long, env("PREFETCH_RADIUS"), default_value_t = 0)]
+    pub prefetch_radius: u8,
 }
 
 #[tokio::main]
@@ -86,11 +90,15 @@ async fn main() {
         },
     };
 
-    // Initialize Benchmark
+    // Initialize Benchmark with Config Summary
     use hoppermc_benchmark::BenchmarkMetrics;
     let benchmark = if std::env::var("BENCHMARK").is_ok() {
         println!("BENCHMARK MODE ENABLED 🚀");
-        Some(Arc::new(BenchmarkMetrics::new()))
+        let config_summary = format!(
+            "Gen: {} | Seed: {} | Storage: {} | Cache: {} | Prefetch: {}", 
+            args.generator, args.seed, args.storage, args.cache_size, args.prefetch_radius
+        );
+        Some(Arc::new(BenchmarkMetrics::new(config_summary)))
     } else {
         None
     };
@@ -98,7 +106,7 @@ async fn main() {
     let handle = tokio::runtime::Handle::current();
     // Clone Arc for VirtualFile, keep original for report
     // Clone Arc for VirtualFile, keep original for report
-    let virtual_file = Arc::new(VirtualFile::new(generator, storage, handle, benchmark.clone(), args.cache_size));
+    let virtual_file = Arc::new(VirtualFile::new(generator, storage, handle, benchmark.clone(), args.cache_size, args.prefetch_radius));
     let fs = McFUSE { virtual_file };
 
     println!("Mounting HopperMC FUSE to {:?} (Background)", args.mountpoint);

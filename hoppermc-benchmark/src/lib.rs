@@ -38,12 +38,14 @@ pub struct BenchmarkMetrics {
 
     // Session
     pub start_time: Option<Instant>,
+    pub config_summary: String,
 }
 
 impl BenchmarkMetrics {
-    pub fn new() -> Self {
+    pub fn new(config_summary: String) -> Self {
         Self {
             start_time: Some(Instant::now()),
+            config_summary,
             ..Default::default()
         }
     }
@@ -173,6 +175,7 @@ impl BenchmarkMetrics {
         format!(
             "HopperMC Benchmark Report\n\
              =========================\n\
+             Configuration: {}\n\
              Session Duration: {:.2?}\n\n\
              [Generation]\n\
              Chunks Generated: {}\n\
@@ -202,6 +205,7 @@ impl BenchmarkMetrics {
              Hits: {}\n\
              Misses: {}\n\
              Hit Rate: {:.1}%\n",
+            self.config_summary,
             uptime,
             generated, gen_time_total, gen_avg, gen_max,
             biome_avg, noise_avg, surface_avg, conv_avg,
