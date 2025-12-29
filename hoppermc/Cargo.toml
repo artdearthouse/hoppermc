@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 hoppermc-fs = { path = "../hoppermc-fs" }
 hoppermc-gen = { path = "../hoppermc-gen" }
+hoppermc-storage = { path = "../hoppermc-storage" }
 clap = { workspace = true }
 tokio = { workspace = true }
 env_logger = { workspace = true }

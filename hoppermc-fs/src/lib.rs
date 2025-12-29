@@ -267,17 +267,21 @@ impl Filesystem for McFUSE {
         _req: &Request,
         ino: u64,
         _fh: u64,
-        _offset: i64,
+        offset: i64,
         data: &[u8],
         _write_flags: u32,
         _flags: i32,
         _lock_owner: Option<u64>,
         reply: fuser::ReplyWrite,
     ) {
-        if inode::is_region_inode(ino) || inode::is_generic_inode(ino) {
-            // "Honestly" say that we wrote as many bytes as sent
-            // println!("Writing {} dummy bytes to inode {}", data.len(), ino);
-            // TODO: Pass to virtual file if we want to handle writes seriously
+        if let Some((x, z)) = inode::unpack(ino) {
+             let offset = offset as u64;
+             // Pass to virtual file for interception
+             self.virtual_file.write_at(offset, data, x, z);
+             
+             reply.written(data.len() as u32);
+        } else if inode::is_generic_inode(ino) {
+            // Generic file, just say yes
             reply.written(data.len() as u32);
         } else {
             reply.error(ENOENT);

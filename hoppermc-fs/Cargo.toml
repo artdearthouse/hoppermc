@@ -6,8 +6,13 @@ edition = "2024"
 [dependencies]
 hoppermc-anvil = { path = "../hoppermc-anvil" }
 hoppermc-gen = { path = "../hoppermc-gen" }
+hoppermc-storage = { path = "../hoppermc-storage" }
 fuser = { workspace = true }
 libc = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
 anyhow = { workspace = true }
+fastnbt = { workspace = true }
+thiserror = { workspace = true }
+async-trait = "0.1"
+tokio = { workspace = true, features = ["rt", "sync"] }

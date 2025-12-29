@@ -38,6 +38,14 @@ pub fn generate_header() -> Vec<u8> {
         header[loc_idx + 1] = ((sector_id >> 8) & 0xFF) as u8;
         header[loc_idx + 2] = (sector_id & 0xFF) as u8;
         header[loc_idx + 3] = sector_count;
+        
+        // Debug Log first few entries
+        if i < 5 {
+             // We can't log here easily without importing log crate or using println (which might spam/not show).
+             // But we can use println! as this is low freq (only on read).
+             // Actually, this function is called on every read. Spam risk!
+             // Let's NOT log here.
+        }
     }
     header
 }
@@ -57,6 +65,78 @@ pub fn compress_and_wrap_chunk(nbt_data: &[u8]) -> Option<Vec<u8>> {
         }
     }
     None
+}
+
+pub fn unwrap_and_decompress_chunk(chunk_blob: &[u8]) -> anyhow::Result<Vec<u8>> {
+    if chunk_blob.len() < 5 {
+        anyhow::bail!("Chunk blob too short");
+    }
+    
+    // Parse header
+    // let len = u32::from_be_bytes([chunk_blob[0], chunk_blob[1], chunk_blob[2], chunk_blob[3]]);
+    let compression_type = chunk_blob[4];
+    
+    // Data starts at 5
+    let compressed_data = &chunk_blob[5..];
+    
+    match compression_type {
+        2 => {
+            // Zlib
+            let mut decoder = flate2::read::ZlibDecoder::new(compressed_data);
+            let mut decompressed = Vec::new();
+            std::io::Read::read_to_end(&mut decoder, &mut decompressed)?;
+            Ok(decompressed)
+        },
+        1 => {
+            // Gzip (unused in modern MC region files usually, but spec allows it)
+            let mut decoder = flate2::read::GzDecoder::new(compressed_data);
+            let mut decompressed = Vec::new();
+            std::io::Read::read_to_end(&mut decoder, &mut decompressed)?;
+            Ok(decompressed)
+        },
+        _ => anyhow::bail!("Unknown compression type: {}", compression_type),
+    }
+}
+
+pub fn verify_chunk_coords(nbt_data: &[u8], expected_x: i32, expected_z: i32) -> anyhow::Result<()> {
+    // Lightweight parse
+    // Modern MC chunks are root compounds with xPos and zPos directly (since 1.18 or so)
+    // Older (and maybe still valid) are { Level: { xPos, zPos } }
+    
+    // Attempt parsing
+    let nbt: fastnbt::Value = fastnbt::from_bytes(nbt_data)?;
+    
+    if let fastnbt::Value::Compound(root) = nbt {
+        // Check for direct xPos/zPos (Pumpkin/Modern)
+        if let (Some(x_tag), Some(z_tag)) = (root.get("xPos"), root.get("zPos")) {
+             let x = x_tag.as_i64().ok_or_else(|| anyhow::anyhow!("xPos is not an int"))? as i32;
+             let z = z_tag.as_i64().ok_or_else(|| anyhow::anyhow!("zPos is not an int"))? as i32;
+             
+             if x != expected_x || z != expected_z {
+                 anyhow::bail!("NBT Coords mismatch! Expected ({}, {}), Found ({}, {})", expected_x, expected_z, x, z);
+             }
+             return Ok(());
+        }
+        
+        // Check for Level compound (Legacy/Vanilla)
+        if let Some(level_tag) = root.get("Level") {
+            if let fastnbt::Value::Compound(level) = level_tag {
+                if let (Some(x_tag), Some(z_tag)) = (level.get("xPos"), level.get("zPos")) {
+                     let x = x_tag.as_i64().ok_or_else(|| anyhow::anyhow!("Level.xPos is not an int"))? as i32;
+                     let z = z_tag.as_i64().ok_or_else(|| anyhow::anyhow!("Level.zPos is not an int"))? as i32;
+                     
+                     if x != expected_x || z != expected_z {
+                         anyhow::bail!("NBT Coords (Level) mismatch! Expected ({}, {}), Found ({}, {})", expected_x, expected_z, x, z);
+                     }
+                     return Ok(());
+                }
+            }
+        }
+        
+        anyhow::bail!("Could not find xPos/zPos in NBT root or Level compound. Keys: {:?}", root.keys());
+    } else {
+        anyhow::bail!("NBT Root is not a Compound");
+    }
 }
 
 

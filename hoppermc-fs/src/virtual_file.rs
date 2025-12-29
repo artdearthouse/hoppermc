@@ -1,14 +1,17 @@
 use std::sync::Arc;
 use hoppermc_gen::WorldGenerator;
 use hoppermc_anvil as region;
+use hoppermc_storage::ChunkStorage;
 
 pub struct VirtualFile {
     pub generator: Arc<dyn WorldGenerator>,
+    pub storage: Arc<dyn ChunkStorage>,
+    pub rt: tokio::runtime::Handle,
 }
 
 impl VirtualFile {
-    pub fn new(generator: Arc<dyn WorldGenerator>) -> Self {
-        Self { generator }
+    pub fn new(generator: Arc<dyn WorldGenerator>, storage: Arc<dyn ChunkStorage>, rt: tokio::runtime::Handle) -> Self {
+        Self { generator, storage, rt }
     }
 
     pub fn read_at(&self, offset: u64, size: usize, region_x: i32, region_z: i32) -> Vec<u8> {
@@ -18,6 +21,11 @@ impl VirtualFile {
         if offset < region::HEADER_BYTES {
             let header = region::generate_header();
             
+            // Debug: Log first few bytes
+            if offset == 0 {
+                log::info!("Header Generated. Bytes 0..16: {:02X?}", &header[0..16]);
+            }
+
             let start_in_header = offset as usize;
             let end_in_header = std::cmp::min(start_in_header + size, region::HEADER_BYTES as usize);
             if start_in_header < region::HEADER_BYTES as usize {
@@ -36,7 +44,42 @@ impl VirtualFile {
                 let abs_x = region_x * 32 + rel_x;
                 let abs_z = region_z * 32 + rel_z;
                 
-                if let Ok(nbt_data) = self.generator.generate_chunk(abs_x, abs_z) {
+                // 1. Try to load from Storage first
+                // Use stored runtime handle
+                let storage_data = self.rt.block_on(async {
+                     self.storage.load_chunk(abs_x, abs_z).await
+                });
+
+                let nbt_res = match storage_data {
+                    Ok(Some(raw_nbt)) => {
+                        // Found in DB!
+                        // Verify consistency immediately
+                        if let Err(e) = region::verify_chunk_coords(&raw_nbt, abs_x, abs_z) {
+                             log::error!("CRITICAL: DB Corruption detected for ({}, {}). Data coords mismatch: {:?}. Discarding and regenerating.", abs_x, abs_z, e);
+                             // Self-healing: Drop corrupted data, fall back to generator
+                             self.generator.generate_chunk(abs_x, abs_z)
+                        } else {
+                             Ok(raw_nbt)
+                        }
+                    },
+                    Ok(None) => {
+                        // Not in DB, generate it
+                        self.generator.generate_chunk(abs_x, abs_z)
+                    },
+                    Err(e) => {
+                        log::error!("Error loading chunk from DB: {:?}", e);
+                        self.generator.generate_chunk(abs_x, abs_z)
+                    }
+                };
+
+                if let Ok(nbt_data) = nbt_res {
+                     // Verify generated/resultant consistency
+                    if let Err(e) = region::verify_chunk_coords(&nbt_data, abs_x, abs_z) {
+                        log::error!("CRITICAL: Generated chunk coords mismatch for ({}, {}): {:?}", abs_x, abs_z, e);
+                         // If generator is broken, we are doomed. Returning empty/broken data.
+                         // Maybe break loop?
+                    }
+
                     if let Some(chunk_blob) = region::compress_and_wrap_chunk(&nbt_data) {
                         let chunk_start_file_offset = region::get_chunk_file_offset(rel_x, rel_z);
                         
@@ -77,12 +120,82 @@ impl VirtualFile {
 
         response_data
     }
+    pub fn write_at(&self, offset: u64, data: &[u8], region_x: i32, region_z: i32) {
+        // --- WRITE INTERCEPTION ---
+        // If writing to header area (0..8192) -> Ignore (it's virtual).
+        // If writing data area:
+        if offset >= region::HEADER_BYTES {
+             // 1. Identify which chunk this is
+             if let Some((rel_x, rel_z)) = region::get_chunk_coords_from_offset(offset) {
+                 // 2. We only support "full chunk writes" for now.
+                 
+                 // Check if data looks like a chunk:
+                 // 4 bytes length + 1 byte type + data.
+                 // We rely on unwrap_and_decompress_chunk to validate.
+                 
+                 if let Ok(raw_nbt) = region::unwrap_and_decompress_chunk(data) {
+                     let abs_x = region_x * 32 + rel_x;
+                     let abs_z = region_z * 32 + rel_z;
+                     
+                     // Verify consistency and correct if necessary
+                     let (save_x, save_z) = match region::verify_chunk_coords(&raw_nbt, abs_x, abs_z) {
+                         Ok(_) => {
+                             // Correct coords
+                             (abs_x, abs_z)
+                         },
+                         Err(_) => {
+                             // Mismatch! Extract real coords from NBT to trust them.
+                             let mut real_x = abs_x;
+                             let mut real_z = abs_z;
+                             
+                             if let Ok(real_nbt) = fastnbt::from_bytes::<fastnbt::Value>(&raw_nbt) {
+                                  if let fastnbt::Value::Compound(root) = &real_nbt {
+                                      let (x, z) = if let (Some(x), Some(z)) = (root.get("xPos"), root.get("zPos")) {
+                                            (x.as_i64(), z.as_i64())
+                                      } else if let Some(fastnbt::Value::Compound(level)) = root.get("Level") {
+                                            (
+                                                level.get("xPos").and_then(|v| v.as_i64()), 
+                                                level.get("zPos").and_then(|v| v.as_i64())
+                                            )
+                                      } else {
+                                          (None, None)
+                                      };
+                                      
+                                      if let (Some(rx), Some(rz)) = (x, z) {
+                                          real_x = rx as i32;
+                                          real_z = rz as i32;
+                                      }
+                                  }
+                             }
+                             log::warn!("CORRECTION: Intercepted write at offset for ({}, {}), but NBT contains ({}, {}). Saving to DB as ({}, {}).", abs_x, abs_z, real_x, real_z, real_x, real_z);
+                             (real_x, real_z)
+                         }
+                     };
+                     
+                     log::info!("Intercepted write for Chunk ({}, {}). Size: {} bytes. Saving to DB...", save_x, save_z, raw_nbt.len());
+                     
+                     // 3. Save to DB
+                     // Use stored runtime handle
+                     let result = self.rt.block_on(async {
+                         self.storage.save_chunk(save_x, save_z, &raw_nbt).await
+                     });
+                     
+                     if let Err(e) = result {
+                         log::error!("Failed to save chunk ({}, {}) to DB: {:?}", abs_x, abs_z, e);
+                     }
+                 } else {
+                     log::warn!("Write to chunk data area at offset {} (len {}) failed decompression/validation. Maybe partial write?", offset, data.len());
+                 }
+             }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use anyhow::Result;
+    use async_trait::async_trait;
 
     struct MockGenerator;
     impl WorldGenerator for MockGenerator {
@@ -92,10 +205,23 @@ mod tests {
         }
     }
 
+    struct MockStorage;
+    #[async_trait]
+    impl ChunkStorage for MockStorage {
+        async fn save_chunk(&self, _x: i32, _z: i32, _data: &[u8]) -> Result<()> {
+            Ok(())
+        }
+        async fn load_chunk(&self, _x: i32, _z: i32) -> Result<Option<Vec<u8>>> {
+            Ok(None)
+        }
+    }
+
     #[test]
     fn test_virtual_file_read_header() {
         let generator = Arc::new(MockGenerator);
-        let vf = VirtualFile::new(generator);
+        let storage = Arc::new(MockStorage);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let vf = VirtualFile::new(generator, storage, rt.handle().clone());
 
         // Read first 10 bytes of header. Region 0,0
         let data = vf.read_at(0, 10, 0, 0);
@@ -105,7 +231,9 @@ mod tests {
     #[test]
     fn test_virtual_file_read_chunk_offset() {
         let generator = Arc::new(MockGenerator);
-        let vf = VirtualFile::new(generator);
+        let storage = Arc::new(MockStorage);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let vf = VirtualFile::new(generator, storage, rt.handle().clone());
 
         // Calculate offset for chunk 0,0
         // Header is 8192 bytes

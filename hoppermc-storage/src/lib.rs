@@ -1,6 +1,23 @@
 use anyhow::Result;
+use async_trait::async_trait;
 
-pub trait ChunkStorage {
-    fn read_chunk(&self, chunk_x: i32, chunk_z: i32) -> Result<Option<Vec<u8>>>;
-    fn write_chunk(&self, chunk_x: i32, chunk_z: i32, data: &[u8]) -> Result<()>;
+pub mod postgres;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageMode {
+    Raw,            // Phase 1: Blob
+    Jsonb,          // Phase 2: Json
+    Hybrid,         // Phase 3: Structured
+    Weightless      // Phase 4: Diffs
+}
+
+#[async_trait]
+pub trait ChunkStorage: Send + Sync {
+    /// Save a chunk to the storage backend.
+    /// Data is expected to be Raw NBT (already decompressed if coming from FUSE write, or generated).
+    async fn save_chunk(&self, x: i32, z: i32, data: &[u8]) -> Result<()>;
+
+    /// Load a chunk from storage.
+    /// Returns None if the chunk does not exist in the DB.
+    async fn load_chunk(&self, x: i32, z: i32) -> Result<Option<Vec<u8>>>;
 }

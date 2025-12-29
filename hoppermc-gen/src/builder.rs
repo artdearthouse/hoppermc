@@ -129,4 +129,30 @@ mod tests {
         let bytes = result.unwrap();
         assert!(!bytes.is_empty());
     }
+    
+    #[test]
+    fn test_coordinate_serialization() {
+        let mut builder = ChunkBuilder::new();
+        // Coords from the bug
+        // Expected (32, 13), Found (37, 28)
+        let x = 32;
+        let z = 13;
+        let result = builder.build(x, z).unwrap();
+        
+        let nbt: fastnbt::Value = fastnbt::from_bytes(result.as_slice()).expect("Should be valid NBT");
+        println!("NBT: {:?}", nbt);
+        
+        if let fastnbt::Value::Compound(map) = nbt {
+             let x_tag = map.get("xPos").expect("Should have xPos");
+             let z_tag = map.get("zPos").expect("Should have zPos");
+             
+             let x_val = x_tag.as_i64().expect("xPos should be int");
+             let z_val = z_tag.as_i64().expect("zPos should be int");
+             
+             assert_eq!(x_val, x as i64, "xPos mismatch");
+             assert_eq!(z_val, z as i64, "zPos mismatch");
+        } else {
+             panic!("Root should be Compound");
+        }
+    }
 }

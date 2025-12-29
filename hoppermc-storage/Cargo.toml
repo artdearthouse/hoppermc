@@ -6,7 +6,9 @@ edition = "2024"
 [dependencies]
 tokio-postgres = { workspace = true }
 deadpool-postgres = { workspace = true }
-postgis = { workspace = true }
-hex = { workspace = true }
+# postgis = { workspace = true } # unused for now
+# hex = { workspace = true } # unused for now
 anyhow = { workspace = true }
 tokio = { workspace = true }
+log = { workspace = true }
+async-trait = "0.1"

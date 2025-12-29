@@ -16,6 +16,7 @@ log = "0.4"
 clap = { version = "4.5", features = ["derive"] }
 anyhow = "1.0"
 fastnbt = "2.6"
+thiserror = "1.0"
 flate2 = "1.1"
 tokio = { version = "1", features = ["full"] }
 rand = "=0.10.0-rc.5"
