@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.6-pre4] - Unreleased
+
+### Added
+-   **PgJsonb Mode**: Support for structured JSON storage in PostgreSQL (NBT ↔ JSONB conversion).
+-   **Storage Mode Refactoring**: Internal storage logic updated to support backend-specific naming (`pg_raw` vs `pg_jsonb`).
+
 ## [0.0.6-pre3] - 2025-12-30
 
 ### Added
