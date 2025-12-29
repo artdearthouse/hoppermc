@@ -1,21 +1,25 @@
 # syntax=docker/dockerfile:1
-# BUILD
-FROM rust:1.92-slim-trixie as builder
-
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get install -y pkg-config libfuse3-dev git
-
+FROM rust:1.92-slim-trixie as chef
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends pkg-config libfuse3-dev git \
+ && rm -rf /var/lib/apt/lists/*
+RUN cargo install cargo-chef
 WORKDIR /usr/src/app/hoppermc
 
-COPY ./ ./
+FROM chef as planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
 
-# Use Cache Mounts to speed up builds
-# cache/registry: crates.io index and sources
-# cache/git: git repositories
-# target: compiled artifacts
+FROM chef as builder
+COPY --from=planner /usr/src/app/hoppermc/recipe.json recipe.json
+# Build dependencies - this will be cached if recipe.json hasn't changed
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/usr/src/app/hoppermc/target \
+    cargo chef cook --release --recipe-path recipe.json
+
+# Build application
+COPY . .
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/src/app/hoppermc/target \
     cargo build --release --workspace && \
     cp target/release/hoppermc /usr/local/bin/hoppermc
@@ -23,9 +27,9 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # RUNTIME
 FROM debian:trixie-slim
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get install -y fuse3 tini ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends fuse3 tini ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 RUN sed -i 's/#user_allow_other/user_allow_other/' /etc/fuse.conf
 
 COPY --from=builder /usr/local/bin/hoppermc /usr/local/bin/hoppermc
