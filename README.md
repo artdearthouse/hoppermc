@@ -16,12 +16,13 @@ A FUSE-based virtual filesystem for Minecraft that intercepts and simulates `.mc
 
 ## Overview
 
-Currently, this project acts as a **Stateless Infinite Flat World Generator**.
+Currently, this project acts as a **Stateless Infinite World Generator** with multiple terrain modes.
 
 **Key Features:**
 - [x] 🚀 **Infinite World**: Generates chunks procedurally as Minecraft requests them (Stateless).
 - [x] 🔄 **Negative Coordinates**: Fully supports infinite exploration in all directions (negative X/Z).
 - [x] 🎃 **Pumpkin-Powered Generator**: Uses [Pumpkin-MC](https://github.com/Pumpkin-MC/Pumpkin) for robust and efficient chunk generation and NBT serialization.
+- [x] 🏔️ **Vanilla Terrain (Experimental)**: Realistic terrain with biomes, caves, and surface rules via Pumpkin's staged generation.
 - [x] 📁 **Anvil Format**: Emulates standard Minecraft region headers and chunk data (Works with Paper 1.21+).
 - [x] 📦 **Compression Support**: Handles GZip, ZLib, and LZ4 (Minecraft 24w04a+) compressed chunks.
 - [x] 🐳 **Docker-first**: Runs in a container with FUSE permissions (`/dev/fuse`).
@@ -122,17 +123,27 @@ We plan to evolve HopperMC into a **P2P Module** to enable scale architecture:
 ### With Docker (Recommended)
 
 ```bash
-# 1. Start the FUSE filesystem and Minecraft server (Fast Build)
+# 1. Configure generator in .env (optional)
+echo "GENERATOR=vanilla" >> .env  # or 'flat' (default)
+echo "SEED=12345" >> .env
+
+# 2. Start the FUSE filesystem and Minecraft server
 DOCKER_BUILDKIT=1 docker compose up -d --build
 
-# 2. Connect to localhost:25565
+# 3. Connect to localhost:25565
 ```
+
+**Generator Options:**
+- `flat` (default) — Fast, simple flat world.
+- `vanilla` — Realistic terrain with biomes, caves, ores.
+
+> ⚠️ **Performance Warning:** The `vanilla` generator is **very slow** — initial chunk loading may take 30+ seconds and appear frozen. This is expected due to complex noise sampling. Optimization is planned.
 
 This starts:
 - `hoppermc`: The FUSE filesystem mounting to `/mnt/region`.
 - `minecraft`: A Paper server configured to use the FUSE mount.
 
-**Note:** Changes are now saved to the PostgreSQL database! This is a Proof of Concept implementation.
+**Note:** Changes are saved to the PostgreSQL database (Proof of Concept).
 
 ## How It Works
 

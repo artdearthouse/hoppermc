@@ -2,14 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.0.6] - 2025-12-29
+## [0.0.6-pre2] - 2025-12-29
 
 ### Added
 -   **LZ4 Decompression Support**: Added support for LZ4 compressed chunks (Minecraft 24w04a+) via `lz4-java-wrc`.
 -   **Compression Constants Module**: New `hoppermc_anvil::compression` module with GZIP, ZLIB, NONE, LZ4 constants.
+-   **Vanilla World Generator (Experimental)**: Full integration with Pumpkin's `VanillaGenerator` for realistic Minecraft terrain with biomes, caves, and surface rules. Uses staged generation (biomes → noise → surface) with `ProtoChunk` → `ChunkData` conversion.
+    -   Select via `--generator vanilla` CLI flag or `GENERATOR=vanilla` env var.
+    -   Seed configurable via `--seed N` or `SEED=N`.
 
 ### Changed
 -   **Dependency Cleanup**: Removed unused workspace dependencies (`thiserror`, `postgis`, `hex`, `pumpkin-nbt`, `pumpkin-util`).
+-   **Docker Compose**: Now passes `GENERATOR` and `SEED` environment variables from `.env` to the hoppermc container.
+
+### Known Issues
+-   ⚠️ **Vanilla Generator Performance**: The vanilla generator is **very slow** — chunk loading may appear frozen for 30+ seconds on initial spawn. This is expected due to complex noise sampling. Optimization planned for future releases.
 
 ## [0.0.5] - 2025-12-29
 
