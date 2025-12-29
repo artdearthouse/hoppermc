@@ -82,8 +82,18 @@ async fn main() {
         },
     };
 
+    // Initialize Benchmark
+    use hoppermc_fs::benchmark::BenchmarkMetrics;
+    let benchmark = if std::env::var("BENCHMARK").is_ok() {
+        println!("BENCHMARK MODE ENABLED 🚀");
+        Some(Arc::new(BenchmarkMetrics::new()))
+    } else {
+        None
+    };
+
     let handle = tokio::runtime::Handle::current();
-    let virtual_file = VirtualFile::new(generator, storage, handle);
+    // Clone Arc for VirtualFile, keep original for report
+    let virtual_file = VirtualFile::new(generator, storage, handle, benchmark.clone());
     let fs = McFUSE { virtual_file };
 
     println!("Mounting HopperMC FUSE to {:?} (Background)", args.mountpoint);
@@ -93,4 +103,17 @@ async fn main() {
     println!("Mounted successfully! Press Ctrl+C to unmount");
     
     tokio::signal::ctrl_c().await.expect("failed to install CTRL+C signal handler");
+
+    // Write Benchmark Report
+    if let Some(bench) = benchmark {
+        let report = bench.generate_report();
+        let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        let filename = format!("benchmark-{}.txt", timestamp);
+        if let Err(e) = std::fs::write(&filename, &report) {
+            eprintln!("Failed to write benchmark report: {}", e);
+        } else {
+            println!("Benchmark report written to {}", filename);
+            println!("{}", report);
+        }
+    }
 }

@@ -2,16 +2,23 @@ use std::sync::Arc;
 use hoppermc_gen::WorldGenerator;
 use hoppermc_anvil as region;
 use hoppermc_storage::ChunkStorage;
+use crate::benchmark::BenchmarkMetrics;
 
 pub struct VirtualFile {
     pub generator: Arc<dyn WorldGenerator>,
     pub storage: Option<Arc<dyn ChunkStorage>>,
     pub rt: tokio::runtime::Handle,
+    pub benchmark: Option<Arc<BenchmarkMetrics>>,
 }
 
 impl VirtualFile {
-    pub fn new(generator: Arc<dyn WorldGenerator>, storage: Option<Arc<dyn ChunkStorage>>, rt: tokio::runtime::Handle) -> Self {
-        Self { generator, storage, rt }
+    pub fn new(
+        generator: Arc<dyn WorldGenerator>, 
+        storage: Option<Arc<dyn ChunkStorage>>, 
+        rt: tokio::runtime::Handle,
+        benchmark: Option<Arc<BenchmarkMetrics>>
+    ) -> Self {
+        Self { generator, storage, rt, benchmark }
     }
 
     pub fn read_at(&self, offset: u64, size: usize, region_x: i32, region_z: i32) -> Vec<u8> {
@@ -46,9 +53,13 @@ impl VirtualFile {
                 
                 // 1. Try to load from Storage first (if storage is enabled)
                 let nbt_res = if let Some(storage) = &self.storage {
+                    let start = std::time::Instant::now();
                     let storage_data = self.rt.block_on(async {
                         storage.load_chunk(abs_x, abs_z).await
                     });
+                    if let Some(bench) = &self.benchmark {
+                        bench.record_load(start.elapsed());
+                    }
 
                     match storage_data {
                         Ok(Some(raw_nbt)) => {
@@ -56,24 +67,44 @@ impl VirtualFile {
                             // Verify consistency immediately
                             if let Err(e) = region::verify_chunk_coords(&raw_nbt, abs_x, abs_z) {
                                 log::error!("CRITICAL: DB Corruption detected for ({}, {}). Data coords mismatch: {:?}. Discarding and regenerating.", abs_x, abs_z, e);
-                                // Self-healing: Drop corrupted data, fall back to generator
-                                self.generator.generate_chunk(abs_x, abs_z, &self.rt)
+                                // Generation Fallback
+                                let start_gen = std::time::Instant::now();
+                                let res = self.generator.generate_chunk(abs_x, abs_z, &self.rt);
+                                if let Some(bench) = &self.benchmark {
+                                    bench.record_generation(start_gen.elapsed());
+                                }
+                                res
                             } else {
                                 Ok(raw_nbt)
                             }
                         },
                         Ok(None) => {
                             // Not in DB, generate it
-                            self.generator.generate_chunk(abs_x, abs_z, &self.rt)
+                            let start_gen = std::time::Instant::now();
+                            let res = self.generator.generate_chunk(abs_x, abs_z, &self.rt);
+                            if let Some(bench) = &self.benchmark {
+                                bench.record_generation(start_gen.elapsed());
+                            }
+                            res
                         },
                         Err(e) => {
                             log::error!("Error loading chunk from DB: {:?}", e);
-                            self.generator.generate_chunk(abs_x, abs_z, &self.rt)
+                            let start_gen = std::time::Instant::now();
+                            let res = self.generator.generate_chunk(abs_x, abs_z, &self.rt);
+                            if let Some(bench) = &self.benchmark {
+                                bench.record_generation(start_gen.elapsed());
+                            }
+                            res
                         }
                     }
                 } else {
                     // No storage - always generate (stateless mode)
-                    self.generator.generate_chunk(abs_x, abs_z, &self.rt)
+                    let start_gen = std::time::Instant::now();
+                    let res = self.generator.generate_chunk(abs_x, abs_z, &self.rt);
+                    if let Some(bench) = &self.benchmark {
+                        bench.record_generation(start_gen.elapsed());
+                    }
+                    res
                 };
 
                 if let Ok(nbt_data) = nbt_res {
@@ -180,9 +211,13 @@ impl VirtualFile {
                      
                      // 3. Save to DB (if storage is enabled)
                      if let Some(storage) = &self.storage {
+                         let start = std::time::Instant::now();
                          let result = self.rt.block_on(async {
                              storage.save_chunk(save_x, save_z, &raw_nbt).await
                          });
+                         if let Some(bench) = &self.benchmark {
+                            bench.record_save(start.elapsed());
+                         }
                          
                          if let Err(e) = result {
                              log::error!("Failed to save chunk ({}, {}) to DB: {:?}", abs_x, abs_z, e);

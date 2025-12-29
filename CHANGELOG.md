@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 -   **Storage Mode Selection**: New `STORAGE` env var / `--storage` CLI arg to choose storage backend.
     -   `raw` (default) — Persist chunks to PostgreSQL.
     -   `nostorage` — Fully stateless mode, all chunks generated on-the-fly. No DB required.
+-   **Internal Benchmark System**: Enable via `BENCHMARK=true`. Writes `benchmark-{timestamp}.txt` on exit with generation/load metrics.
 
 ---
 
