@@ -26,8 +26,8 @@ impl VirtualFile {
         prefetch_radius: u8,
     ) -> Self {
         let cap = NonZeroUsize::new(cache_size).unwrap_or(NonZeroUsize::new(500).unwrap());
-        // Limit concurrent heavy generations (e.g. 4 threads)
-        let limiter = Arc::new(tokio::sync::Semaphore::new(4));
+        // Limit concurrent heavy generations (e.g. 2 threads to avoid starvation)
+        let limiter = Arc::new(tokio::sync::Semaphore::new(2));
         
         Self { 
             generator, 
@@ -336,10 +336,17 @@ impl VirtualFile {
                     let gen_ref = generator.clone();
                     let rt = rt_handle.clone();
                     let bench = benchmark.clone();
+                    
+                    let start_bg_gen = std::time::Instant::now();
 
                     let res = tokio::task::spawn_blocking(move || {
                         gen_ref.generate_chunk(tx, tz, &rt, bench.as_deref())
                     }).await;
+                    
+                    // Record TOTAL time/count for background chunks too
+                    if let Some(bench) = &benchmark {
+                        bench.record_generation(start_bg_gen.elapsed());
+                    }
 
                     match res {
                         Ok(Ok(nbt)) => {
