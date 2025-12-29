@@ -14,11 +14,11 @@ pub struct Args {
     pub mountpoint: PathBuf,
     
     /// World generator: "flat" or "vanilla"
-    #[arg(short, long, default_value = "flat")]
+    #[arg(short, long, env = "GENERATOR", default_value = "flat")]
     pub generator: String,
     
     /// World seed (for vanilla generator)
-    #[arg(short, long, default_value = "0")]
+    #[arg(short, long, env = "SEED", default_value = "0")]
     pub seed: u64,
 }
 

@@ -7,7 +7,7 @@ edition = "2024"
 hoppermc-fs = { path = "../hoppermc-fs" }
 hoppermc-gen = { path = "../hoppermc-gen" }
 hoppermc-storage = { path = "../hoppermc-storage" }
-clap = { workspace = true }
+clap = { workspace = true, features = ["env"] }
 tokio = { workspace = true }
 env_logger = { workspace = true }
 fuser = { workspace = true }

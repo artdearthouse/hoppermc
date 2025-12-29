@@ -26,9 +26,12 @@ impl VanillaWorldGenerator {
 
 impl WorldGenerator for VanillaWorldGenerator {
     fn generate_chunk(&self, x: i32, z: i32) -> Result<Vec<u8>> {
-        // TODO: Wire up actual Pumpkin generation
-        // For now, generate placeholder mountainous terrain
-        // Real implementation needs ProtoChunk + noise sampling
+        // NOTE: VanillaGenerator is initialized but full integration is WIP.
+        // Pumpkin's terrain generation requires:
+        // 1. ProtoChunk::new() with settings
+        // 2. ChunkNoiseGenerator for terrain populate
+        // 3. Async biome sampling via MultiNoiseSampler
+        // For now: simple height-varied terrain as placeholder
         
         let mut builder = ChunkBuilder::new();
         
