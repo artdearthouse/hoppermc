@@ -33,9 +33,11 @@ The project is a workspace divided into 6 crates:
 **Key Types**: `BenchmarkMetrics`.
 - Uses `AtomicU64`/`AtomicUsize` for thread-safe counting without locks.
 - Tracks:
-    - **Generation**: Time spent in Biomes/Noise/Surface/Conversion.
+- Matches:
+    - **Generation Logic**: Granular breakdown of `Biomes` (grid), `Noise` (terrain), `Surface` (blocks), and `Conversion`.
+    - **Filesystem (FUSE)**: Tracks `read_at` Latency, Throughput (MB/s), and Compression Ratios.
     - **I/O**: Cache Hits/Misses, Serialization, Compression.
-- **Reporting**: Prints a summary to `benchmarks/` on shutdown.
+- **Reporting**: Prints a detailed summary to `benchmarks/` on shutdown.
 
 ### 2. `hoppermc-anvil` (Format Utilities)
 **Role**: Constants and helpers for the Anvil file format.
@@ -83,6 +85,7 @@ The project is a workspace divided into 6 crates:
     - Checks **LRU Cache**.
     - If miss: Calls `generator.generate_chunk()`.
     - Compresses resultant NBT.
+    - Records **FUSE Metrics** (Latency, Size).
     - Returns byte slice to Minecraft.
 4.  **`write_at`**:
     - Intercepts chunk saves.
@@ -116,7 +119,9 @@ Minecraft -> read(r.0.0.mca, offset=8192)
             -> Pumpkin: Noise -> Biomes -> Surface
             -> Serialize to NBT
         -> Compress (Zlib)
+        -> Compress (Zlib)
         -> Store in Cache
+        -> Record Benchmark (Latency/Size)
     -> Return Bytes
 ```
 
