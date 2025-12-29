@@ -311,14 +311,15 @@ impl Filesystem for McFUSE {
              let offset = offset as u64;
              let size = size as usize;
              
-             let vf = self.virtual_file.clone();
-             std::thread::spawn(move || {
-                  reply.data(&vf.read_at(offset, size, x, z));
-             });
+             log::debug!("FUSE Read: r.{}.{}.mca offset={} size={}", x, z, offset, size);
+             let data = self.virtual_file.read_at(offset, size, x, z);
+             log::debug!("FUSE Read Done: r.{}.{}.mca returned {} bytes", x, z, data.len());
+             reply.data(&data);
          } else if inode::is_generic_inode(ino) {
               // Generic files are empty on read
               reply.data(&[]);
          } else {
+             log::warn!("FUSE Read: Unknown Inode {} at offset {}", ino, offset);
              reply.data(&[]);
          }
     }
