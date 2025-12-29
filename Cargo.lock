@@ -782,7 +782,7 @@ dependencies = [
 
 [[package]]
 name = "hoppermc"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "clap",
  "env_logger",
@@ -795,7 +795,7 @@ dependencies = [
 
 [[package]]
 name = "hoppermc-anvil"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "anyhow",
  "fastnbt",
@@ -805,7 +805,7 @@ dependencies = [
 
 [[package]]
 name = "hoppermc-fs"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -822,7 +822,7 @@ dependencies = [
 
 [[package]]
 name = "hoppermc-gen"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "anyhow",
  "fastnbt",
@@ -836,7 +836,7 @@ dependencies = [
 
 [[package]]
 name = "hoppermc-storage"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "anyhow",
  "async-trait",

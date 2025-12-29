@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.6] - 2025-12-29
+
+### Added
+-   **LZ4 Decompression Support**: Added support for LZ4 compressed chunks (Minecraft 24w04a+) via `lz4-java-wrc`.
+-   **Compression Constants Module**: New `hoppermc_anvil::compression` module with GZIP, ZLIB, NONE, LZ4 constants.
+
+### Changed
+-   **Dependency Cleanup**: Removed unused workspace dependencies (`thiserror`, `postgis`, `hex`, `pumpkin-nbt`, `pumpkin-util`).
+
 ## [0.0.5] - 2025-12-29
 
 ### Changed
