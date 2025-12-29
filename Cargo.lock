@@ -782,7 +782,7 @@ dependencies = [
 
 [[package]]
 name = "hoppermc"
-version = "0.0.6"
+version = "0.0.6-pre4"
 dependencies = [
  "clap",
  "env_logger",
@@ -796,7 +796,7 @@ dependencies = [
 
 [[package]]
 name = "hoppermc-anvil"
-version = "0.0.6"
+version = "0.0.6-pre4"
 dependencies = [
  "anyhow",
  "fastnbt",
@@ -806,11 +806,11 @@ dependencies = [
 
 [[package]]
 name = "hoppermc-benchmark"
-version = "0.0.6"
+version = "0.0.6-pre4"
 
 [[package]]
 name = "hoppermc-fs"
-version = "0.0.6"
+version = "0.0.6-pre4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -829,7 +829,7 @@ dependencies = [
 
 [[package]]
 name = "hoppermc-gen"
-version = "0.0.6"
+version = "0.0.6-pre4"
 dependencies = [
  "anyhow",
  "fastnbt",
@@ -846,12 +846,15 @@ dependencies = [
 
 [[package]]
 name = "hoppermc-storage"
-version = "0.0.6"
+version = "0.0.6-pre4"
 dependencies = [
  "anyhow",
  "async-trait",
  "deadpool-postgres",
+ "fastnbt",
  "log",
+ "serde",
+ "serde_json",
  "tokio",
  "tokio-postgres",
 ]

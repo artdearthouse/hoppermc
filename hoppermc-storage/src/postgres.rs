@@ -62,6 +62,7 @@ impl PostgresStorage {
     }
 }
 
+
 #[async_trait]
 impl ChunkStorage for PostgresStorage {
     async fn save_chunk(&self, x: i32, z: i32, data: &[u8]) -> Result<()> {
@@ -79,17 +80,24 @@ impl ChunkStorage for PostgresStorage {
             }
             StorageMode::PgJsonb => {
                 // Phase 2: NBT -> JSONB
-                match fastnbt::from_bytes::<serde_json::Value>(data) {
-                    Ok(json_value) => {
-                        client.execute(
-                            "INSERT INTO chunks_jsonb (x, z, data, updated_at) 
-                             VALUES ($1, $2, $3, NOW())
-                             ON CONFLICT (x, z) DO UPDATE SET data = $3, updated_at = NOW()",
-                            &[&x, &z, &json_value],
-                        ).await.context("Failed to insert chunk jsonb")?;
+                match fastnbt::from_bytes::<fastnbt::Value>(data) {
+                    Ok(nbt_value) => {
+                        match serde_json::to_value(&nbt_value) {
+                            Ok(json_value) => {
+                                client.execute(
+                                    "INSERT INTO chunks_jsonb (x, z, data, updated_at) 
+                                     VALUES ($1, $2, $3, NOW())
+                                     ON CONFLICT (x, z) DO UPDATE SET data = $3, updated_at = NOW()",
+                                    &[&x, &z, &json_value],
+                                ).await.context("Failed to insert chunk jsonb")?;
+                            }
+                            Err(e) => {
+                                log::error!("Failed to serialize fastnbt::Value to JSON for ({}, {}): {:?}", x, z, e);
+                            }
+                        }
                     }
                     Err(e) => {
-                        log::error!("Failed to convert NBT to JSON for ({}, {}): {:?}", x, z, e);
+                        log::error!("Failed to parse NBT for ({}, {}): {:?}", x, z, e);
                     }
                 }
             }
@@ -120,10 +128,18 @@ impl ChunkStorage for PostgresStorage {
                  let row = client.query_opt("SELECT data FROM chunks_jsonb WHERE x = $1 AND z = $2", &[&x, &z]).await?;
                  if let Some(row) = row {
                      let json_value: serde_json::Value = row.get(0);
-                     match fastnbt::to_bytes(&json_value) {
-                         Ok(nbt_data) => Ok(Some(nbt_data)),
+                     match serde_json::from_value::<fastnbt::Value>(json_value) {
+                         Ok(nbt_value) => {
+                             match fastnbt::to_bytes(&nbt_value) {
+                                 Ok(nbt_data) => Ok(Some(nbt_data)),
+                                 Err(e) => {
+                                     log::error!("Failed to encode NBT for ({}, {}): {:?}", x, z, e);
+                                     Ok(None)
+                                 }
+                             }
+                         }
                          Err(e) => {
-                             log::error!("Failed to convert JSON to NBT for ({}, {}): {:?}", x, z, e);
+                             log::error!("Failed to deserialize JSON to fastnbt::Value for ({}, {}): {:?}", x, z, e);
                              Ok(None)
                          }
                      }
