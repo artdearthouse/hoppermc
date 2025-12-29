@@ -23,6 +23,15 @@ pub struct BenchmarkMetrics {
     pub total_serialization_us: AtomicU64,
     pub total_compression_us: AtomicU64,
     
+    // FUSE Stats
+    // FUSE Stats
+    pub total_fuse_read_count: AtomicUsize,
+    pub total_fuse_read_time_us: AtomicU64,
+    pub total_fuse_bytes_sent: AtomicUsize,
+    
+    pub total_gen_bytes_raw: AtomicUsize,
+    pub total_gen_bytes_compressed: AtomicUsize,
+    
     // Cache
     pub total_cache_hits: AtomicUsize,
     pub total_cache_misses: AtomicUsize,
@@ -80,6 +89,17 @@ impl BenchmarkMetrics {
         self.total_compression_us.fetch_add(duration.as_micros() as u64, Ordering::Relaxed);
     }
 
+    pub fn record_fuse_request(&self, duration: Duration, bytes_sent: usize) {
+        self.total_fuse_read_count.fetch_add(1, Ordering::Relaxed);
+        self.total_fuse_read_time_us.fetch_add(duration.as_micros() as u64, Ordering::Relaxed);
+        self.total_fuse_bytes_sent.fetch_add(bytes_sent, Ordering::Relaxed);
+    }
+
+    pub fn record_chunk_sizes(&self, raw: usize, compressed: usize) {
+        self.total_gen_bytes_raw.fetch_add(raw, Ordering::Relaxed);
+        self.total_gen_bytes_compressed.fetch_add(compressed, Ordering::Relaxed);
+    }
+
     pub fn record_cache_hit(&self) {
         self.total_cache_hits.fetch_add(1, Ordering::Relaxed);
     }
@@ -126,6 +146,30 @@ impl BenchmarkMetrics {
         let save_time = self.total_save_time_us.load(Ordering::Relaxed) as f64 / 1000.0;
         let save_avg = if saved > 0 { save_time / saved as f64 } else { 0.0 };
 
+        // FUSE stats
+        let fuse_requests = self.total_fuse_read_count.load(Ordering::Relaxed);
+        let fuse_time = self.total_fuse_read_time_us.load(Ordering::Relaxed) as f64 / 1000.0; // ms
+        let fuse_avg_latency = if fuse_requests > 0 { fuse_time / fuse_requests as f64 } else { 0.0 };
+        
+        // Overhead relative to generation (rough estimate, assumes 1 gen per req in miss case, or 0 in hit)
+        // A better metric is Latency - Gen Avg (if generated).
+        let fuse_overhead = fuse_avg_latency - gen_avg; 
+        
+        let fuse_throughput = if uptime.as_secs_f64() > 0.0 {
+            (self.total_fuse_bytes_sent.load(Ordering::Relaxed) as f64 / 1024.0 / 1024.0) / uptime.as_secs_f64()
+        } else { 0.0 };
+        
+        let gen_raw = self.total_gen_bytes_raw.load(Ordering::Relaxed);
+        let gen_comp = self.total_gen_bytes_compressed.load(Ordering::Relaxed);
+        
+        // Avg Chunk Sizes
+        let avg_raw_kb = if generated > 0 { gen_raw as f64 / generated as f64 / 1024.0 } else { 0.0 };
+        let avg_comp_kb = if generated > 0 { gen_comp as f64 / generated as f64 / 1024.0 } else { 0.0 };
+        
+        let compression_ratio = if gen_comp > 0 {
+            gen_raw as f64 / gen_comp as f64
+        } else { 0.0 };
+
         format!(
             "HopperMC Benchmark Report\n\
              =========================\n\
@@ -148,6 +192,12 @@ impl BenchmarkMetrics {
              [Storage Write]\n\
              Chunks Saved: {}\n\
              Avg Time: {:.2} ms/chunk\n\n\
+             [FUSE Filesystem]\n\
+             Requests: {}\n\
+             Avg Latency: {:.2} ms\n\
+             Overhead: {:.2} ms/req (Latency - Generation)\n\
+             Throughput: {:.2} MB/s\n\
+             Compression Ratio: {:.2}x ({:.1} KB -> {:.1} KB)\n\n\
              [Cache]\n\
              Hits: {}\n\
              Misses: {}\n\
@@ -158,6 +208,9 @@ impl BenchmarkMetrics {
             ser_avg, comp_avg,
             loaded, load_avg,
             saved, save_avg,
+            // FUSE Params
+            fuse_requests, fuse_avg_latency, fuse_overhead, fuse_throughput, 
+            compression_ratio, avg_raw_kb, avg_comp_kb,
             hits, misses, hit_rate
         )
     }

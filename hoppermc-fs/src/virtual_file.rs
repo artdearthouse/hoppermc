@@ -51,7 +51,9 @@ impl VirtualFile {
             }
         }
 
-        // --- 2. CHUNK DATA GENERATION (8192+) ---
+        // --- 2. CHUNK DATA GENERATION ---
+        let start_fuse = std::time::Instant::now();
+
         while response_data.len() < size {
             let current_len = response_data.len();
             let data_read_offset = offset + current_len as u64;
@@ -137,6 +139,11 @@ impl VirtualFile {
                             if let Some(blob) = blob_opt {
                                 // Update Cache
                                 self.cache.lock().unwrap().put((abs_x, abs_z), blob.clone());
+
+                                // Record Sizes (Only if we just generated/compressed it)
+                                if let Some(bench) = &self.benchmark {
+                                     bench.record_chunk_sizes(nbt_data.len(), blob.len());
+                                }
                                 blob
                             } else {
                                 break; // Compression fail
@@ -181,6 +188,11 @@ impl VirtualFile {
         // Pad with zeros if something is missing
         if response_data.len() < size {
              response_data.resize(size, 0);
+        }
+
+        // Record Total Request Time
+        if let Some(bench) = &self.benchmark {
+            bench.record_fuse_request(start_fuse.elapsed(), response_data.len());
         }
 
         response_data
