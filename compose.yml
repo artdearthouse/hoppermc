@@ -32,11 +32,13 @@ services:
     depends_on:
       db:
         condition: service_healthy
+        required: false
 
   db:
     image: postgis/postgis:18-3.6-alpine
     container_name: postgres
     restart: always
+    profiles: ["raw"]
     env_file: .env
     volumes:
       - db_data:/var/lib/postgresql/data
@@ -49,6 +51,7 @@ services:
   adminer:
     image: adminer
     restart: always
+    profiles: ["raw"]
     ports:
       - "8080:8080"
     depends_on:
