@@ -107,7 +107,7 @@ async fn main() {
     // Clone Arc for VirtualFile, keep original for report
     // Clone Arc for VirtualFile, keep original for report
     let virtual_file = Arc::new(VirtualFile::new(generator, storage, handle, benchmark.clone(), args.cache_size, args.prefetch_radius));
-    let fs = McFUSE { virtual_file };
+    let fs = McFUSE { virtual_file: virtual_file.clone() };
 
     println!("Mounting HopperMC FUSE to {:?} (Background)", args.mountpoint);
     
@@ -129,6 +129,16 @@ async fn main() {
 
     // Write Benchmark Report
     if let Some(bench) = benchmark {
+        println!("Received shutdown signal, unmounting...");
+        
+        // Fetch final storage size if storage is enabled
+        if let Some(storage) = &virtual_file.storage {
+             match storage.get_total_size().await {
+                 Ok(size) => bench.record_db_size(size),
+                 Err(e) => eprintln!("Failed to fetch storage size for benchmark: {}", e),
+             }
+        }
+
         let report = bench.generate_report();
         let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
         

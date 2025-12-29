@@ -298,37 +298,48 @@ impl VirtualFile {
 
     fn trigger_prefetch(&self, center_x: i32, center_z: i32) {
         let radius = self.prefetch_radius as i32;
-        let limiter = self.prefetch_limiter.clone();
-        let generator = self.generator.clone();
-        let storage = self.storage.clone();
-        let cache = self.cache.clone(); 
         
-        let rt_handle = self.rt.clone();
-        let benchmark = self.benchmark.clone();
-        
-        // Spawn background task
-        self.rt.spawn(async move {
-            for dx in -radius..=radius {
-                for dz in -radius..=radius {
-                    if dx == 0 && dz == 0 { continue; } // Skip center
-                    
-                    let tx = center_x + dx;
-                    let tz = center_z + dz;
-                    
+        for dx in -radius..=radius {
+            for dz in -radius..=radius {
+                if dx == 0 && dz == 0 { continue; } // Skip center
+                
+                let tx = center_x + dx;
+                let tz = center_z + dz;
+
+                // Clone state for each neighbor task
+                let limiter = self.prefetch_limiter.clone();
+                let generator = self.generator.clone();
+                let storage = self.storage.clone();
+                let cache = self.cache.clone(); 
+                let rt_handle = self.rt.clone();
+                let benchmark = self.benchmark.clone();
+                
+                // Spawn a task per neighbor - they will compete for the semaphore
+                self.rt.spawn(async move {
                     // 1. Check Cache (Fast check)
                     {
                         if cache.lock().unwrap().contains(&(tx, tz)) {
-                            continue;
+                            return;
                         }
                     }
                     
                     // 2. Acquire Permit (throttling)
-                    let _permit = limiter.acquire().await.unwrap();
+                    let _permit = match limiter.acquire().await {
+                        Ok(p) => p,
+                        Err(_) => return,
+                    };
                     
+                    // Double check cache after acquiring permit (in case another thread finished it)
+                    {
+                        if cache.lock().unwrap().contains(&(tx, tz)) {
+                            return;
+                        }
+                    }
+
                     // 3. Check DB
                     if let Some(storage) = &storage {
                         if let Ok(Some(_)) = storage.load_chunk(tx, tz).await {
-                             continue; 
+                             return; 
                         }
                     }
                     
@@ -367,9 +378,9 @@ impl VirtualFile {
                              log::warn!("Prefetch task join failed for ({}, {}): {:?}", tx, tz, e);
                         }
                     }
-                }
+                });
             }
-        });
+        }
     }
 }
 

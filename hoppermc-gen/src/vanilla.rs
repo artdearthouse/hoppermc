@@ -139,33 +139,59 @@ impl VanillaWorldGenerator {
         let mut sections = ChunkSections::new(sections_vec.into_boxed_slice(), settings.shape.min_y as i32);
 
         // Copy biomes from proto_chunk to sections
-        for y in 0..biome_coords::from_block(settings.shape.height) {
+        use rayon::prelude::*;
+        let biome_y_range: Vec<i32> = (0..biome_coords::from_block(settings.shape.height) as i32).collect();
+        let sections_biomes: Vec<Vec<u8>> = biome_y_range.into_par_iter().map(|y| {
+            let mut biome_values = Vec::with_capacity(BiomePalette::SIZE * BiomePalette::SIZE);
+            for z in 0..BiomePalette::SIZE {
+                for local_x in 0..BiomePalette::SIZE {
+                    let absolute_y = biome_coords::from_block(settings.shape.min_y as i32) + y;
+                    let biome = proto_chunk.get_biome(local_x as i32, absolute_y, z as i32);
+                    biome_values.push(biome.id as u8);
+                }
+            }
+            biome_values
+        }).collect();
+
+        for (y, biome_values) in sections_biomes.into_iter().enumerate() {
             let relative_y = y as usize;
             let section_index = relative_y / BiomePalette::SIZE;
             let relative_y_in_section = relative_y % BiomePalette::SIZE;
             
             if let Some(section) = sections.sections.get_mut(section_index) {
+                let mut idx = 0;
                 for z in 0..BiomePalette::SIZE {
                     for local_x in 0..BiomePalette::SIZE {
-                        let absolute_y = biome_coords::from_block(settings.shape.min_y as i32) + y as i32;
-                        let biome = proto_chunk.get_biome(local_x as i32, absolute_y, z as i32);
-                        section.biomes.set(local_x, relative_y_in_section, z, biome.id);
+                        section.biomes.set(local_x, relative_y_in_section, z, biome_values[idx]);
+                        idx += 1;
                     }
                 }
             }
         }
         
         // Copy blocks from proto_chunk to sections
-        for y in 0..settings.shape.height {
-            let relative_y = y as usize;
-            let section_index = relative_y / BlockPalette::SIZE;
-            let relative_y_in_section = relative_y % BlockPalette::SIZE;
+        let y_range: Vec<i32> = (0..(settings.shape.height as i32)).collect();
+        
+        let block_data: Vec<Vec<u16>> = y_range.into_par_iter().map(|y| {
+            let mut row = Vec::with_capacity(16 * 16);
+            for z in 0..16 {
+                for x in 0..16 {
+                    row.push(proto_chunk.get_block_state_raw(x, y, z) as u16);
+                }
+            }
+            row
+        }).collect();
+
+        for (y, row) in block_data.into_iter().enumerate() {
+            let section_index = y / 16;
+            let relative_y_in_section = y % 16;
             
             if let Some(section) = sections.sections.get_mut(section_index) {
-                for z in 0..BlockPalette::SIZE {
-                    for local_x in 0..BlockPalette::SIZE {
-                        let block = proto_chunk.get_block_state_raw(local_x as i32, y as i32, z as i32);
-                        section.block_states.set(local_x, relative_y_in_section, z, block);
+                let mut idx = 0;
+                for z in 0..16 {
+                    for x in 0..16 {
+                        section.block_states.set(x, relative_y_in_section, z, row[idx]);
+                        idx += 1;
                     }
                 }
             }

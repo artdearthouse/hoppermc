@@ -91,4 +91,17 @@ impl ChunkStorage for PostgresStorage {
              _ => Ok(None)
         }
     }
+
+    async fn get_total_size(&self) -> Result<u64> {
+        let client = self.pool.get().await.context("Failed to get DB connection")?;
+        
+        match self.mode {
+            StorageMode::Raw => {
+                let row = client.query_one("SELECT pg_total_relation_size('chunks_raw')", &[]).await?;
+                let size: i64 = row.get(0);
+                Ok(size as u64)
+            }
+            _ => Ok(0)
+        }
+    }
 }

@@ -36,6 +36,8 @@ pub struct BenchmarkMetrics {
     pub total_cache_hits: AtomicUsize,
     pub total_cache_misses: AtomicUsize,
 
+    pub total_db_size_bytes: AtomicU64,
+
     // Session
     pub start_time: Option<Instant>,
     pub config_summary: String,
@@ -48,6 +50,10 @@ impl BenchmarkMetrics {
             config_summary,
             ..Default::default()
         }
+    }
+
+    pub fn record_db_size(&self, size_bytes: u64) {
+        self.total_db_size_bytes.store(size_bytes, Ordering::Relaxed);
     }
 
     pub fn record_generation(&self, duration: Duration) {
@@ -172,6 +178,18 @@ impl BenchmarkMetrics {
             gen_raw as f64 / gen_comp as f64
         } else { 0.0 };
 
+        let db_size_mb = self.total_db_size_bytes.load(Ordering::Relaxed) as f64 / 1024.0 / 1024.0;
+        
+        let total_chunks = generated + (loaded as usize);
+        let est_mca_mb = if total_chunks > 0 {
+            // Est: chunk (4KB) + per-region header overhead
+            let regions = (total_chunks as f64 / 1024.0).ceil();
+            let raw_size = regions * 8192.0 + (total_chunks as f64 * 4096.0);
+            raw_size / 1024.0 / 1024.0
+        } else {
+            0.0
+        };
+
         format!(
             "HopperMC Benchmark Report\n\
              =========================\n\
@@ -204,7 +222,12 @@ impl BenchmarkMetrics {
              [Cache]\n\
              Hits: {}\n\
              Misses: {}\n\
-             Hit Rate: {:.1}%\n",
+             Hit Rate: {:.1}%\n\
+             \n\
+             [World Weight]\n\
+             Estimated MCA Size: {:.2} MB (standard .mca files)\n\
+             Actual DB Size: {:.2} MB (PostgreSQL table)\n\
+             Efficiency: {:.1}x (DB vs MCA)\n",
             self.config_summary,
             uptime,
             generated, gen_time_total, gen_avg, gen_max,
@@ -215,7 +238,9 @@ impl BenchmarkMetrics {
             // FUSE Params
             fuse_requests, fuse_avg_latency, fuse_overhead, fuse_throughput, 
             compression_ratio, avg_raw_kb, avg_comp_kb,
-            hits, misses, hit_rate
+            hits, misses, hit_rate,
+            est_mca_mb, db_size_mb,
+            if db_size_mb > 0.0 { est_mca_mb / db_size_mb } else { 0.0 }
         )
     }
 }

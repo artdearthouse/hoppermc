@@ -14,3 +14,4 @@ rand = { workspace = true }
 rand_core = { workspace = true }
 fastnbt = { workspace = true }
 hoppermc-benchmark = { path = "../hoppermc-benchmark" }
+rayon = "1.10"

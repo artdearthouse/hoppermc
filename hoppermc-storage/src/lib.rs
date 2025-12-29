@@ -20,4 +20,5 @@ pub trait ChunkStorage: Send + Sync {
     /// Load a chunk from storage.
     /// Returns None if the chunk does not exist in the DB.
     async fn load_chunk(&self, x: i32, z: i32) -> Result<Option<Vec<u8>>>;
+    async fn get_total_size(&self) -> Result<u64> { Ok(0) }
 }
