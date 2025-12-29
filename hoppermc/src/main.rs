@@ -102,7 +102,17 @@ async fn main() {
 
     println!("Mounted successfully! Press Ctrl+C to unmount");
     
-    tokio::signal::ctrl_c().await.expect("failed to install CTRL+C signal handler");
+    println!("Mounted successfully! Waiting for shutdown signal...");
+    
+    // Handle both SIGINT (Ctrl+C) and SIGTERM (Docker stop)
+    use tokio::signal::unix::{signal, SignalKind};
+    let mut sigint = signal(SignalKind::interrupt()).expect("failed to install SIGINT handler");
+    let mut sigterm = signal(SignalKind::terminate()).expect("failed to install SIGTERM handler");
+
+    tokio::select! {
+        _ = sigint.recv() => println!("Received SIGINT"),
+        _ = sigterm.recv() => println!("Received SIGTERM"),
+    }
 
     // Write Benchmark Report
     if let Some(bench) = benchmark {
