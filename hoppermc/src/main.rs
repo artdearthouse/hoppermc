@@ -3,6 +3,8 @@ use std::path::PathBuf;
 
 use hoppermc_fs::McFUSE;
 use hoppermc_gen::flat::FlatGenerator;
+use hoppermc_gen::vanilla::VanillaWorldGenerator;
+use hoppermc_gen::WorldGenerator;
 use hoppermc_fs::virtual_file::VirtualFile;
 
 #[derive(Parser)]
@@ -10,6 +12,14 @@ use hoppermc_fs::virtual_file::VirtualFile;
 pub struct Args {
     #[arg(short, long, default_value = "/mnt/region")]
     pub mountpoint: PathBuf,
+    
+    /// World generator: "flat" or "vanilla"
+    #[arg(short, long, default_value = "flat")]
+    pub generator: String,
+    
+    /// World seed (for vanilla generator)
+    #[arg(short, long, default_value = "0")]
+    pub seed: u64,
 }
 
 #[tokio::main]
@@ -49,7 +59,18 @@ async fn main() {
 
     use std::sync::Arc;
 
-    let generator = Arc::new(FlatGenerator);
+    // Select generator based on CLI args
+    let generator: Arc<dyn WorldGenerator> = match args.generator.as_str() {
+        "vanilla" => {
+            println!("Using Pumpkin VanillaGenerator with seed: {}", args.seed);
+            Arc::new(VanillaWorldGenerator::new(args.seed))
+        },
+        "flat" | _ => {
+            println!("Using FlatGenerator");
+            Arc::new(FlatGenerator)
+        },
+    };
+
     let handle = tokio::runtime::Handle::current();
     let virtual_file = VirtualFile::new(generator, storage, handle);
     let fs = McFUSE { virtual_file };

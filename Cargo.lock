@@ -828,6 +828,7 @@ dependencies = [
  "fastnbt",
  "hoppermc-anvil",
  "pumpkin-data",
+ "pumpkin-util",
  "pumpkin-world",
  "rand 0.10.0-rc.5",
  "rand_core 0.10.0-rc-2",

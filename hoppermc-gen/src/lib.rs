@@ -5,4 +5,5 @@ pub trait WorldGenerator: Send + Sync {
 }
 
 pub mod flat;
+pub mod vanilla;
 pub mod builder;

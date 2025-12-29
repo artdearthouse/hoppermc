@@ -7,6 +7,7 @@ edition = "2024"
 hoppermc-anvil = { path = "../hoppermc-anvil" }
 pumpkin-world = { workspace = true }
 pumpkin-data = { workspace = true }
+pumpkin-util = { workspace = true }
 anyhow = { workspace = true }
 tokio = { workspace = true }
 rand = { workspace = true }
