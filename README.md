@@ -123,9 +123,10 @@ We plan to evolve HopperMC into a **P2P Module** to enable scale architecture:
 ### With Docker (Recommended)
 
 ```bash
-# 1. Configure generator in .env (optional)
+# 1. Configure in .env (optional)
 echo "GENERATOR=vanilla" >> .env  # or 'flat' (default)
 echo "SEED=12345" >> .env
+echo "STORAGE=nostorage" >> .env  # or 'raw' (PostgreSQL, default)
 
 # 2. Start the FUSE filesystem and Minecraft server
 DOCKER_BUILDKIT=1 docker compose up -d --build
@@ -137,13 +138,17 @@ DOCKER_BUILDKIT=1 docker compose up -d --build
 - `flat` (default) — Fast, simple flat world.
 - `vanilla` — Realistic terrain with biomes, caves, ores.
 
+**Storage Options:**
+- `raw` (default) — Persist chunks to PostgreSQL.
+- `nostorage` — Stateless mode, all chunks generated on-the-fly. No database required.
+
 > ⚠️ **Performance Warning:** The `vanilla` generator is **very slow** — initial chunk loading may take 30+ seconds and appear frozen. This is expected due to complex noise sampling. Optimization is planned.
 
 This starts:
 - `hoppermc`: The FUSE filesystem mounting to `/mnt/region`.
 - `minecraft`: A Paper server configured to use the FUSE mount.
 
-**Note:** Changes are saved to the PostgreSQL database (Proof of Concept).
+**Note:** With `STORAGE=raw`, changes are saved to PostgreSQL. With `STORAGE=nostorage`, the world is fully stateless.
 
 ## How It Works
 

@@ -18,8 +18,12 @@ pub struct Args {
     pub generator: String,
     
     /// World seed (for vanilla generator)
-    #[arg(short, long, env = "SEED", default_value = "0")]
+    #[arg(long, env = "SEED", default_value = "0")]
     pub seed: u64,
+    
+    /// Storage mode: "nostorage" (stateless) or "raw" (PostgreSQL)
+    #[arg(long, env = "STORAGE", default_value = "raw")]
+    pub storage: String,
 }
 
 #[tokio::main]
@@ -27,37 +31,44 @@ async fn main() {
     env_logger::init();
     let args = Args::parse();
     
-    // Default URL using hoppermc user/pass
-    let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://postgres:postgres@db:5432/hoppermc".to_string());
-
-    println!("Connecting to storage at {}...", database_url);
-    
     use hoppermc_storage::{postgres::PostgresStorage, StorageMode, ChunkStorage};
+    use std::sync::Arc;
     
-    // Retry loop for DB connection
-    let mut storage_backend = None;
-    for i in 0..30 {
-        match PostgresStorage::new(&database_url, StorageMode::Raw).await {
-            Ok(s) => {
-                storage_backend = Some(s);
-                break;
+    // Initialize storage based on mode
+    let storage: Option<Arc<dyn ChunkStorage>> = match args.storage.to_lowercase().as_str() {
+        "nostorage" | "none" | "stateless" => {
+            println!("Storage mode: NOSTORAGE (stateless, all chunks generated on-the-fly)");
+            None
+        },
+        "raw" | "postgres" | _ => {
+            let database_url = std::env::var("DATABASE_URL")
+                .unwrap_or_else(|_| "postgres://postgres:postgres@db:5432/hoppermc".to_string());
+            
+            println!("Storage mode: RAW (PostgreSQL)");
+            println!("Connecting to storage at {}...", database_url);
+            
+            // Retry loop for DB connection
+            let mut storage_backend = None;
+            for i in 0..30 {
+                match PostgresStorage::new(&database_url, StorageMode::Raw).await {
+                    Ok(s) => {
+                        storage_backend = Some(s);
+                        break;
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to connect to storage: {}. Retrying {}/30 in 2s...", e, i + 1);
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    }
+                }
             }
-            Err(e) => {
-                eprintln!("Failed to connect to storage: {}. Retrying {}/30 in 2s...", e, i + 1);
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-            }
-        }
-    }
 
-    let storage_backend = storage_backend.expect("FATAL: Could not connect to storage after 30 retries.");
-    
-    let storage: std::sync::Arc<dyn ChunkStorage> = std::sync::Arc::new(storage_backend);
+            let backend = storage_backend.expect("FATAL: Could not connect to storage after 30 retries.");
+            Some(Arc::new(backend) as Arc<dyn ChunkStorage>)
+        }
+    };
 
     use fuser::MountOption;
     let options = vec![MountOption::AllowOther, MountOption::RW];
-
-    use std::sync::Arc;
 
     // Select generator based on CLI args
     let generator: Arc<dyn WorldGenerator> = match args.generator.as_str() {

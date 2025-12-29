@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.6-pre3] - 2025-12-29 (Unreleased)
+
+### Added
+-   **Storage Mode Selection**: New `STORAGE` env var / `--storage` CLI arg to choose storage backend.
+    -   `raw` (default) — Persist chunks to PostgreSQL.
+    -   `nostorage` — Fully stateless mode, all chunks generated on-the-fly. No DB required.
+
+---
+
 ## [0.0.6-pre2] - 2025-12-29
 
 ### Added

@@ -14,6 +14,7 @@ services:
       - RUST_LOG=info
       - GENERATOR=${GENERATOR:-flat}
       - SEED=${SEED:-12345}
+      - STORAGE=${STORAGE:-raw}
     volumes:
       - type: bind
         source: ./fuse_region

@@ -5,12 +5,12 @@ use hoppermc_storage::ChunkStorage;
 
 pub struct VirtualFile {
     pub generator: Arc<dyn WorldGenerator>,
-    pub storage: Arc<dyn ChunkStorage>,
+    pub storage: Option<Arc<dyn ChunkStorage>>,
     pub rt: tokio::runtime::Handle,
 }
 
 impl VirtualFile {
-    pub fn new(generator: Arc<dyn WorldGenerator>, storage: Arc<dyn ChunkStorage>, rt: tokio::runtime::Handle) -> Self {
+    pub fn new(generator: Arc<dyn WorldGenerator>, storage: Option<Arc<dyn ChunkStorage>>, rt: tokio::runtime::Handle) -> Self {
         Self { generator, storage, rt }
     }
 
@@ -44,32 +44,36 @@ impl VirtualFile {
                 let abs_x = region_x * 32 + rel_x;
                 let abs_z = region_z * 32 + rel_z;
                 
-                // 1. Try to load from Storage first
-                // Use stored runtime handle
-                let storage_data = self.rt.block_on(async {
-                     self.storage.load_chunk(abs_x, abs_z).await
-                });
+                // 1. Try to load from Storage first (if storage is enabled)
+                let nbt_res = if let Some(storage) = &self.storage {
+                    let storage_data = self.rt.block_on(async {
+                        storage.load_chunk(abs_x, abs_z).await
+                    });
 
-                let nbt_res = match storage_data {
-                    Ok(Some(raw_nbt)) => {
-                        // Found in DB!
-                        // Verify consistency immediately
-                        if let Err(e) = region::verify_chunk_coords(&raw_nbt, abs_x, abs_z) {
-                             log::error!("CRITICAL: DB Corruption detected for ({}, {}). Data coords mismatch: {:?}. Discarding and regenerating.", abs_x, abs_z, e);
-                             // Self-healing: Drop corrupted data, fall back to generator
-                             self.generator.generate_chunk(abs_x, abs_z)
-                        } else {
-                             Ok(raw_nbt)
+                    match storage_data {
+                        Ok(Some(raw_nbt)) => {
+                            // Found in DB!
+                            // Verify consistency immediately
+                            if let Err(e) = region::verify_chunk_coords(&raw_nbt, abs_x, abs_z) {
+                                log::error!("CRITICAL: DB Corruption detected for ({}, {}). Data coords mismatch: {:?}. Discarding and regenerating.", abs_x, abs_z, e);
+                                // Self-healing: Drop corrupted data, fall back to generator
+                                self.generator.generate_chunk(abs_x, abs_z)
+                            } else {
+                                Ok(raw_nbt)
+                            }
+                        },
+                        Ok(None) => {
+                            // Not in DB, generate it
+                            self.generator.generate_chunk(abs_x, abs_z)
+                        },
+                        Err(e) => {
+                            log::error!("Error loading chunk from DB: {:?}", e);
+                            self.generator.generate_chunk(abs_x, abs_z)
                         }
-                    },
-                    Ok(None) => {
-                        // Not in DB, generate it
-                        self.generator.generate_chunk(abs_x, abs_z)
-                    },
-                    Err(e) => {
-                        log::error!("Error loading chunk from DB: {:?}", e);
-                        self.generator.generate_chunk(abs_x, abs_z)
                     }
+                } else {
+                    // No storage - always generate (stateless mode)
+                    self.generator.generate_chunk(abs_x, abs_z)
                 };
 
                 if let Ok(nbt_data) = nbt_res {
@@ -172,16 +176,21 @@ impl VirtualFile {
                          }
                      };
                      
-                     log::info!("Intercepted write for Chunk ({}, {}). Size: {} bytes. Saving to DB...", save_x, save_z, raw_nbt.len());
+                     log::info!("Intercepted write for Chunk ({}, {}). Size: {} bytes.", save_x, save_z, raw_nbt.len());
                      
-                     // 3. Save to DB
-                     // Use stored runtime handle
-                     let result = self.rt.block_on(async {
-                         self.storage.save_chunk(save_x, save_z, &raw_nbt).await
-                     });
-                     
-                     if let Err(e) = result {
-                         log::error!("Failed to save chunk ({}, {}) to DB: {:?}", abs_x, abs_z, e);
+                     // 3. Save to DB (if storage is enabled)
+                     if let Some(storage) = &self.storage {
+                         let result = self.rt.block_on(async {
+                             storage.save_chunk(save_x, save_z, &raw_nbt).await
+                         });
+                         
+                         if let Err(e) = result {
+                             log::error!("Failed to save chunk ({}, {}) to DB: {:?}", abs_x, abs_z, e);
+                         } else {
+                             log::debug!("Chunk ({}, {}) saved to DB successfully.", save_x, save_z);
+                         }
+                     } else {
+                         log::debug!("Storage disabled, skipping save for chunk ({}, {}).", save_x, save_z);
                      }
                  } else {
                      log::warn!("Write to chunk data area at offset {} (len {}) failed decompression/validation. Maybe partial write?", offset, data.len());
