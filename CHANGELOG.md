@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.6-pre5] - 2025-12-30
+
+### Added
+-   **Auto-Benchmark Mode**: Integrated automated performance suite that systematic evaluation of all generator and storage combinations.
+-   **Benchmark CLI & Env**: Added `--auto-benchmark` flag and `AUTO_BENCHMARK` environment variable support.
+-   **Configurable Duration**: Support for `--benchmark-cycle-duration` and `BENCHMARK_CYCLE_DURATION` to control test length.
+
+### Fixed
+-   **Tokio Runtime Panic**: Resolved "Cannot start a runtime from within a runtime" error during benchmarks by moving stress simulations to native OS threads.
+-   **Dependency Fix**: Added missing `hoppermc-anvil` dependency to the `hoppermc` crate for correct chunk offset calculations in benchmarks.
+
+### Changed
+-   **Documentation**: Added comprehensive Benchmarking section to `CONFIGURATION.md`.
+-   **Docker Compose**: Exposed benchmark-related environment variables in `compose.yml`.
+
 ## [0.0.6-pre4] - 2025-12-30
 
 ### Added

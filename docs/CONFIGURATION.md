@@ -60,3 +60,17 @@ The Minecraft DataVersion used for NBT structures.
 Controls logging verbosity.
 - Options: `error`, `warn`, `info`, `debug`, `trace`
 - Example: `RUST_LOG=hoppermc=debug,hoppermc_fs=info`
+
+---
+
+## Benchmarking
+
+### `AUTO_BENCHMARK`
+Enables the automated performance suite that cycles through all generator and storage combinations.
+- **Default**: `false`
+- **Note**: When enabled, the program will NOT mount a FUSE filesystem or start a Minecraft server. It will run simulations and exit after writing a report.
+
+### `BENCHMARK_CYCLE_DURATION`
+Time in seconds to spend testing each configuration.
+- **Default**: `60`
+- **Recommendation**: Use `10` or `30` for quick sanity checks, `60+` for stable average metrics.

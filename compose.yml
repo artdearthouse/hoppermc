@@ -18,6 +18,8 @@ services:
       - BENCHMARK=${BENCHMARK:-false}
       - PREFETCH_RADIUS=${PREFETCH_RADIUS:-0}
       - CACHE_SIZE=${CACHE_SIZE:-500}
+      - AUTO_BENCHMARK=${AUTO_BENCHMARK:-false}
+      - BENCHMARK_CYCLE_DURATION=${BENCHMARK_CYCLE_DURATION:-60}
     working_dir: /app
     volumes:
       - type: bind
